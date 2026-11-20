@@ -1,0 +1,11 @@
+# Outbound notifications. Defined HERE (server-side), never through the API, so a stolen admin session cannot point the platform at a new host.
+# Secrets are read from the environment variable named in secret_env; they are never stored in this file or shown anywhere.
+# Every request is signed:  X-Cicada-Signature: sha256=HMAC(secret, "<X-Cicada-Timestamp>.<body>")  (verify, and reject old timestamps).
+# Only incident summaries leave the platform (logical node labels, no raw telemetry, no pseudonyms, no credentials).
+allow_hosts: []                  # exact hosts or fnmatch globs a URL may use, e.g. ["hooks.slack.com", "*.pagerduty.com"]; empty = nothing may leave
+tenants: {}
+#  tenant-alpha:
+#    - name: oncall-slack
+#      url: https://hooks.slack.com/services/XXX
+#      secret_env: CICADA_HOOK_ALPHA_SECRET
+#      events: [incident_opened, incident_resolved]
