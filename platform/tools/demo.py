@@ -237,7 +237,7 @@ def drill():
         print("[2c] P4: Proof Board evidence")
         sb, pa = f"http://127.0.0.1:{st.saas_port}", f"http://127.0.0.1:{st.ports['alpha']}"
         page = urllib.request.urlopen(f"{sb}/demo", timeout=10).read().decode()
-        check("/demo serves the Proof Board (8 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated", "Dependencies are learned", "Many small deviations", "Ask the platform", "only with two keys")) and "tenant-alpha" not in page)
+        check("/demo serves the Proof Board (9 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated", "Dependencies are learned", "Many small deviations", "Ask the platform", "only with two keys", "healing itself")) and "tenant-alpha" not in page)
         cx = {"X-Chaos": "1", "Origin": sb}
         ev = http("POST", f"{pa}/api/chaos/scenario/secret", None, headers=cx)
         check("secret scenario returns outbound evidence with 0 credentials", ev["evidence"] and all(e["secrets_in_outbound"] == 0 for e in ev["evidence"]) and not any(x.decode() in json.dumps(ev) for x in FAKE_SECRETS), f"{len(ev['evidence'])} payloads")
@@ -389,7 +389,7 @@ def preflight(fix=False, saas="http://127.0.0.1:8000", alpha="http://127.0.0.1:8
 
 
 def boardcheck():
-    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all eight proofs."""
+    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all nine proofs."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -414,7 +414,7 @@ def boardcheck():
             pg.click("#all")
             pg.wait_for_function("document.querySelector('#all').disabled===false", timeout=300000)
             pg.wait_for_timeout(500)
-            verdicts = pg.evaluate("[1,2,3,4,5,6,7,8].map(n=>document.querySelector('#p'+n+' .v').textContent)")
+            verdicts = pg.evaluate("[1,2,3,4,5,6,7,8,9].map(n=>document.querySelector('#p'+n+' .v').textContent)")
             bad = pg.evaluate("[...document.querySelectorAll('.steps li.bad')].map(l=>l.textContent)")
             pg.screenshot(path=str(tmp / "board.png"), full_page=True)
             b.close()

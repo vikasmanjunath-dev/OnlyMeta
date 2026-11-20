@@ -149,8 +149,9 @@ class CalmSource:
         self.drift: dict = {}                                         # node -> [ticks left, overrides]
         self.faults: dict = {}                                        # node -> {ov, left, cut}: a sustained fault that only an action (or its timeout) ends
 
-    def fault(self, node: str, overrides: dict, ticks: int = 240):
-        self.faults[node] = {"ov": dict(overrides), "left": max(int(ticks), 1), "cut": 0.0}
+    def fault(self, node: str, overrides: dict, ticks: int = 240, heal: int = 0):
+        """`heal` > 0: the fault also fades by itself, linearly over that many ticks (a node that would have recovered on its own)."""
+        self.faults[node] = {"ov": dict(overrides), "left": max(int(ticks), 1), "cut": 0.0, "age": 0, "heal": max(int(heal), 0)}
 
     def mitigate(self, node: str, cut: float) -> bool:
         """What a real fix does to the synthetic system: remove `cut` (0..1) of the fault's excess over normal. 0 = the fault is back in full."""
@@ -165,7 +166,8 @@ class CalmSource:
         f = self.faults.get(node)
         if not f or f["left"] <= 0:
             return None
-        return {k: round(CALM.get(k, v) + (v - CALM.get(k, v)) * (1 - f["cut"]), 1) for k, v in f["ov"].items()}
+        cut = max(f["cut"], min(1.0, f["age"] / f["heal"]) if f.get("heal") else 0.0)
+        return {k: round(CALM.get(k, v) + (v - CALM.get(k, v)) * (1 - cut), 1) for k, v in f["ov"].items()}
 
     def inject(self, node: str, ticks: int, overrides: dict):
         """Make `node` report `overrides` for the next `ticks` ticks of THIS feed (in order, in the same window: no mixing with calm samples)."""
@@ -185,6 +187,7 @@ class CalmSource:
                 d[0] -= 1
             for f in self.faults.values():
                 f["left"] -= 1
+                f["age"] += 1
             k += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self.interval_s)

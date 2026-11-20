@@ -121,14 +121,16 @@ def create_app(settings=None) -> FastAPI:
                 "last_error": sender.last_error}
 
     @app.post("/api/chaos/scenario/{name}")
-    async def scenario(name: str, n: int = 15, seconds: float = 30, kind: str = "tamper", ticks: int = 3):
+    async def scenario(name: str, n: int = 15, seconds: float = 30, kind: str = "tamper", ticks: int = 3, node: str = "app-01", heal: int = 0):
         """One-click scenarios for the demo; each returns what the system did, so the panel can show proof."""
         if name == "fault":                                    # sustained CPU saturation on app-01: lasts until an action (or the 20 min cap) ends it
             live = next((x for x in pipe.sources if hasattr(x, "fault")), None)
             if not live:
                 raise HTTPException(409, "this scenario needs the calm live source (SOURCES=calm)")
-            live.fault("app-01", scenarios.FAULT)
-            return {"scenario": name, "mode": "live", "node": "app-01", "sustained": True, "evidence": []}
+            if node not in live.nodes:
+                raise HTTPException(422, f"unknown node {node!r}")
+            live.fault(node, scenarios.FAULT, heal=min(max(heal, 0), 120))
+            return {"scenario": name, "mode": "live", "node": node, "sustained": not heal, "heals_in_ticks": heal or None, "evidence": []}
         if name == "clearfault":
             live = next((x for x in pipe.sources if hasattr(x, "faults")), None)
             if live:
