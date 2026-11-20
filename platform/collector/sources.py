@@ -140,18 +140,43 @@ class SyslogSource:
             transport.close()
 
 
-def make_sources(specs: list[str], default_file_source):
+class CalmSource:
+    """Synthetic steady state for live demos: app-01, db-01, net-01 report healthy values every 5 s (virtual clock, so SPEED works).
+    Nothing abnormal ever happens unless a scenario is injected, so every anomaly on screen has a visible cause. It is synthetic
+    and labelled as such in /api/status (sources: ["calm"])."""
+    def __init__(self, interval_s: float = 5.0, nodes=("app-01", "db-01", "net-01")):
+        self.interval_s, self.nodes, self.malformed, self.read = interval_s, nodes, 0, 0
+
+    async def aevents(self, stop: asyncio.Event) -> AsyncIterator[dict]:
+        from datetime import timedelta
+        from collector.scenarios import ev
+        t0, k = datetime.now(timezone.utc), 0
+        while not stop.is_set():
+            ts = t0 + timedelta(seconds=5 * k)
+            for n in self.nodes:
+                self.read += 1
+                yield normalise(ev(n, ts=ts))
+            k += 1
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=self.interval_s)
+            except asyncio.TimeoutError:
+                pass
+
+
+def make_sources(specs: list[str], default_file_source, speed: float = 1.0):
     """'file' | 'tail:PATH' | 'syslog:HOST:PORT' -> list of sources. Unknown specs fail loudly at start-up."""
     out = []
     for sp in specs:
         sp = sp.strip()
         if sp == "file":
             out.append(default_file_source())
+        elif sp == "calm":
+            out.append(CalmSource(5.0 / max(speed, 0.1)))
         elif sp.startswith("tail:"):
             out.append(TailSource(sp[5:]))
         elif sp.startswith("syslog:"):
             host, _, port = sp[7:].rpartition(":")
             out.append(SyslogSource(host or "127.0.0.1", int(port)))
         else:
-            raise ValueError(f"unknown source spec {sp!r} (use file | tail:PATH | syslog:HOST:PORT)")
+            raise ValueError(f"unknown source spec {sp!r} (use file | calm | tail:PATH | syslog:HOST:PORT)")
     return out

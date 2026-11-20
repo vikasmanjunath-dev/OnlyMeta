@@ -7,7 +7,7 @@ contracts/   schema.py thresholds.yaml tenants.yaml dependency_map.yaml sample_s
 collector/   redact.py (scrub, scan_outbound, pseudo)  payload.py (raw event -> Payload)
 saas/        P2: app.py engine.py store.py health.py tracker.py topology.py ui/tracker.html   (P3: saas/aiops/ next)
 tools/       gen_sample_stream.py (more: inject.py, verify_delivery.py, latency_report.py)
-docs/        diagram.png  allowlist.md  feature_list.md  decisions.md  phase1_pack.pdf
+docs/        diagram.png  allowlist.md  feature_list.md  decisions.md  phase1_pack.pdf  demo_script.md
 tests/       test_contracts.py
 ```
 
@@ -26,9 +26,12 @@ Env: `SAAS_URL` (default http://localhost:8000/ingest), `KEY_ALPHA`/`KEY_BETA`, 
 
 ## Demo extras (one command each)
 ```
-python3 tools/demo.py up       # SaaS :8000 + alpha collector :8001 + beta collector :8002 (Ctrl-C stops all)
-python3 tools/demo.py drill    # self-checking: two-tenant isolation, CLI scenarios, kill -9 recovery; 16 checks, exit 0 only if all pass
+python3 tools/demo.py up          # SaaS :8000 + alpha collector :8001 + beta collector :8002 (Ctrl-C stops all); healthy synthetic feed
+python3 tools/demo.py preflight   # demo-day readiness check against a running `up` (--fix primes cold detectors)
+python3 tools/demo.py boardcheck  # drives the /demo Proof Board in headless Chrome on a throw-away stack (needs Playwright)
+python3 tools/demo.py drill       # self-checking: isolation, CLI scenarios, AIOps, Proof Board evidence, kill -9 recovery; 32 checks
 ```
+Then open **http://127.0.0.1:8000/demo** (the Proof Board; `docs/demo_script.md` is the 5-minute script).
 `drill` runs in a throw-away data dir on ports 18000-18002, so it never touches `data/`. With `up` running, sign in as `beta-admin`
 and point the Chaos tab at `http://127.0.0.1:8002` to drive the EU collector.
 
@@ -39,6 +42,7 @@ and point the Chaos tab at `http://127.0.0.1:8002` to drive the EU collector.
 | Allow-list fields + redaction examples | `docs/allowlist.md`, `contracts/schema.py`, `tests/test_contracts.py` |
 | Simulated-telemetry plan + roles | `docs/phase1_pack.pdf` p.10-11, `contracts/sample_stream.jsonl`, `tools/gen_sample_stream.py` |
 | Prioritised features + MVP demo | `docs/feature_list.md` |
+| 5-minute demo script (Proof Board) | `docs/demo_script.md` |
 
 Read `docs/decisions.md` first: one design decision (pseudonyms vs dependency map) needs a team answer.
 
@@ -83,7 +87,7 @@ Tabs **Incidents** and **Remediation** in the tracker. Everything below is measu
 - **Benchmark**: `python3 tools/aiops_bench.py --seeds 30` (labelled synthetic faults; AIOps vs static thresholds: recall, false anomalies per node-hour, time to detect, RCA top-1 vs "first alert" / "highest z"). It reports its own misses (e.g. a 12->17 ms latency shift is not detected).
 - **P3+ (enhancements)**: hour-of-day **seasonal baselines** (`aiops.seasonal`; a nightly batch stops paging) · **SLO card** (measured MTTD/MTTR vs targets in `aiops.slo`, alert-noise reduction) · **signing-key abuse incidents** (a burst of rejected signed requests on one real key id opens a security incident on `sec:<key>`, with an advisory "rotate or revoke") · **flap damping** (same root failing again within 5 min reopens the incident) · **maintenance windows** (`/api/maintenance`; admin, reason required, max 24 h, audited, suppressed-count shown) · **learned ranking** (recommendations are re-weighted by this tenant's own verified outcomes, "improved 4 of 5 runs here") · **policy what-if** (`POST /api/remediation/policy/simulate` replays past proposals under a draft policy, saves nothing) · **signed webhooks** (`contracts/webhooks.yaml`: host allow-list, secrets from env, HMAC + timestamp, retries, delivery log, incident summaries only) · **post-mortem export** (`/api/incidents/{id}/report`).
 - **Benchmark** now compares static thresholds, EWMA, rolling MAD and the AIOps z-score on the same labelled faults (recall, time-to-detect, false anomalies per node-hour) and reports where each loses.
-- **Demo**: `python3 tools/demo.py up`, then `python3 tools/inject.py incident --ticks 12`; open Incidents, wait ~10 s for a proposal, approve it in Remediation, roll it back. `python3 tools/demo.py drill` checks all of it (27 checks).
+- **Demo**: `python3 tools/demo.py up`, then `python3 tools/inject.py incident --ticks 12`; open Incidents, wait ~10 s for a proposal, approve it in Remediation, roll it back. `python3 tools/demo.py drill` checks all of it (32 checks).
 
 ## Advancements (P1 + P2)
 **Request signing (collector -> SaaS).** Headers `X-Key-Id, X-Timestamp, X-Nonce, X-Signature`; signature = HMAC-SHA256 over
@@ -115,3 +119,10 @@ Measured here (in-process, no network, one laptop-class core): 10,000 payloads a
 
 **Known limits:** single process (rate limiter, login throttle and live-stream bus are in memory; several workers need a shared store); ingest runs on the event loop. The Docker files are untested (no daemon in the authoring sandbox).
 **Roadmap only (not built):** Postgres/Timescale for scale-out, a real message queue between ingest and evaluation, a managed KMS, mTLS.
+
+## P4 · Judge-first demo layer
+- **Proof Board** (`/demo`, `saas/ui/demo.html`): four one-click live proofs, each a real run against the real system, with a verdict and the evidence on screen: (1) a secret never leaves (raw vs outbound, SHA-256 equal on the SaaS), (2) a 40 s network cut loses nothing (live timeline, exact ledger reconciliation), (3) AIOps root cause with weights, z-scores, twin prediction and approve/rollback (simulated), (4) tenant/region isolation and three refused forgeries. Trust strip: p95 vs target, delivered funnel, audit chain, fleet, alert noise, detector warm-up. Keys `1`-`4` run one proof, `R` runs all.
+- **Trust boundary kept**: the page is static (no data); the browser calls the SaaS API with each tenant's session and the collector's `/api/chaos/*` endpoints, which are origin-allow-listed and return only evidence (clean outbound JSON, ids and hashes). Raw data stays unreadable cross-origin.
+- **Healthy synthetic feed** (`SOURCES=calm`, default for `demo.py up`): app-01/db-01/net-01 report steady values on a virtual 5 s clock; faults appear only when injected. `scenario/prime` back-fills calm history and `POST /api/aiops/baselines/rebuild` (admin, audited) re-learns baselines from it, so detectors are warm in seconds.
+- **Fixes found while building it**: incident evidence uses each anomaly's peak z (not the latest sample); the secret scenario uses `app-01` (a one-off node would go silent and hold an incident open).
+- **Verification**: `tests/test_p4_board.py` (12), full suite, `demo.py drill` (32 checks), `demo.py boardcheck` (browser, 4/4).

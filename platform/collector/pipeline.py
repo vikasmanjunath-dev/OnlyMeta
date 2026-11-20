@@ -114,7 +114,7 @@ class Pipeline:
     async def run_stream(self, stop: asyncio.Event):
         """Run every configured source concurrently (file replay, tail, syslog). One event loop thread, so
         process_event stays single-writer and deterministic."""
-        specs = make_sources(list(self.s.sources), lambda: FileSource(self.s.stream_path, rebase=self.s.rebase, loop=self.s.loop))
+        specs = make_sources(list(self.s.sources), lambda: FileSource(self.s.stream_path, rebase=self.s.rebase, loop=self.s.loop), speed=self.s.speed)
         self.sources = specs
         self.source = specs[0] if specs else None
 

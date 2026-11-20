@@ -1,0 +1,164 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proof Board · CICADA</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--line:#2c2c2e;--t:#f5f5f7;--g:#a1a1a6;--g2:#6e6e73;--blue:#0a84ff;--green:#30d158;--orange:#ff9f0a;--red:#ff453a;--teal:#64d2ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Arial,sans-serif;padding:24px 32px 48px;max-width:1500px;margin:auto}
+h1{font-size:30px;letter-spacing:-.8px;margin:0}h2{font-size:12px;letter-spacing:2px;color:var(--g2);margin:0 0 10px;font-weight:700}h3{margin:0;font-size:19px;letter-spacing:-.3px}
+.sub{color:var(--g)}.small{color:var(--g);font-size:13px}.mono{font-family:ui-monospace,Menlo,Consolas,monospace}.card{background:var(--card);border-radius:20px;padding:18px;min-width:0}
+.top{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}.sp{flex:1}.pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;color:#000;background:var(--g2)}
+.pass{background:var(--green)}.fail{background:var(--red);color:#fff}.run{background:var(--orange)}.idle{background:var(--line);color:var(--g)}
+button,input{font:inherit;border-radius:12px;border:1px solid var(--line);background:#000;color:var(--t);padding:9px 14px}button{background:var(--blue);border:0;cursor:pointer;font-weight:600}button:disabled{opacity:.4;cursor:default}button.sec{background:var(--line)}
+#login{max-width:560px;margin:8vh auto}#login input{width:100%;margin:5px 0}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#trust{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}.tile{background:var(--card);border-radius:16px;padding:12px 14px}.tile b{display:block;font-size:24px;letter-spacing:-.8px}.tile span{font-size:11px;color:var(--g2);letter-spacing:1px;font-weight:700}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.head{display:flex;gap:10px;align-items:center;margin-bottom:6px}.num{width:30px;height:30px;border-radius:50%;background:var(--blue);display:grid;place-items:center;font-weight:800;flex:none}
+ol.steps{list-style:none;margin:10px 0;padding:0}ol.steps li{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:14px}.ic{width:18px;font-style:normal;font-weight:800;flex:none}li.ok .ic{color:var(--green)}li.bad .ic{color:var(--red)}li.run .ic{color:var(--orange)}li .dt{margin-left:auto;text-align:right;max-width:55%}
+.ev{margin-top:8px}.cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}.box{border-radius:12px;padding:9px 10px;font:11px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;max-height:230px;overflow:auto}
+.rawb{background:#2a1218;border:1px solid var(--red)}.outb{background:#0e2418;border:1px solid var(--green)}.sec{background:var(--red);color:#fff;border-radius:3px;padding:0 2px;font-weight:800}
+.tl{font:12px/1.6 ui-monospace,Menlo,monospace}.tl div{border-top:1px solid var(--line);padding:2px 0}.bar{height:7px;border-radius:4px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--green)}
+table{width:100%;border-collapse:collapse}td,th{padding:5px 6px;text-align:left;border-top:1px solid var(--line);font-size:12.5px}th{color:var(--g2);font-size:10.5px;letter-spacing:1px;border:0}
+details{margin-top:8px;color:var(--g);font-size:13px}summary{cursor:pointer;color:var(--g2)}.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--orange)}
+#sum{font-weight:800;font-size:15px}kbd{background:var(--line);border-radius:5px;padding:1px 6px;font-size:12px}
+@media (max-width:1100px){.grid{grid-template-columns:1fr}#trust{grid-template-columns:repeat(3,1fr)}}
+</style></head><body>
+
+<div id="login" class="card"><h1>Proof Board</h1><div class="sub" style="margin-bottom:14px">Four live proofs, one click each. Sign in to both demo tenants.</div>
+<div class="row2"><div><h2>ALPHA · REGION IN</h2><input id="au" value="alpha-admin"><input id="ap" type="password" value="alpha-demo-pass"><input id="ac" value="http://127.0.0.1:8001" title="alpha collector"></div>
+<div><h2>BETA · REGION EU</h2><input id="bu" value="beta-admin"><input id="bp" type="password" value="beta-demo-pass"><input id="bc" value="http://127.0.0.1:8002" title="beta collector"></div></div>
+<button id="go" style="width:100%;margin-top:10px">Connect</button><div id="err" class="bad small" style="margin-top:8px"></div></div>
+
+<div id="board" hidden>
+<div class="top"><h1>Proof Board</h1><span class="sub" id="who"></span><span class="sp"></span><span class="small mono" id="clock">0:00</span>
+<span id="sum" class="mono">0/4</span><button id="all" title="R">Run all proofs <kbd>R</kbd></button><button id="rst" class="sec">Reset</button></div>
+<div id="trust"></div>
+<div class="grid" id="cards"></div>
+<div class="small" style="margin-top:14px">Synthetic data: the healthy feed and every fault are generated locally and labelled as such. Remediation is a simulation; nothing real is touched. Keys <kbd>1</kbd>–<kbd>4</kbd> run a single proof.</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const S={a:{},b:{}};let T0=null;
+async function saas(s,path,method="GET",body){const r=await fetch(path,{method,headers:{"Content-Type":"application/json",Authorization:"Bearer "+s.tok},body:body===undefined?undefined:JSON.stringify(body)});let j=null;try{j=await r.json()}catch(e){}return{status:r.status,ok:r.ok,j}}
+async function col(s,path,method="GET"){const r=await fetch(s.col+path,{method,headers:method==="GET"?{}:{"X-Chaos":"1"}});if(!r.ok)throw new Error("collector "+path.split("?")[0]+" returned "+r.status);return r.json()}
+async function login(s,u,p){const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})});const j=await r.json();if(!r.ok)throw new Error(j.detail||"login failed");Object.assign(s,{tok:j.token,tenant:j.tenant_id,region:j.region,user:j.username,role:j.role})}
+
+const DEFS=[
+ {id:1,t:"A secret never leaves the customer network",say:"We inject a log line with three fake credentials. The raw line stays in the collector. What crosses the wire is a schema allow-list, and the SaaS holds exactly those bytes: same SHA-256.",fb:"If the SaaS step times out: open the collector panel (port 8001) and show raw next to outbound; the credentials only appear on the raw side."},
+ {id:2,t:"A network cut loses nothing",say:"We cut the network for 40 seconds. The SaaS honestly marks the nodes stale, the collector keeps buffering to disk, and when the link returns every payload arrives once. The ledger is compared id by id and hash by hash.",fb:"Takes about 70 s. Talk through the timeline while it runs. If it fails, run python3 tools/verify_delivery.py for the same exact comparison."},
+ {id:3,t:"AIOps names the root cause and proposes a safe fix",say:"A database CPU spike and application latency arrive together. The detector uses each node's own baseline (z-score), correlates alerts through the dependency map, ranks the root with explained weights, and proposes a fix the twin predicts will help. Approval is human; execution is simulated.",fb:"If no incident appears: press Prime baselines in the tile above, then run again. Remember the first proof run needs warm detectors."},
+ {id:4,t:"Tenants and regions are isolated, and tampering is refused",say:"Beta (EU) is signed in next to alpha (IN). Beta asking for alpha's payload, node or incident gets the same answer as for something that does not exist. A payload claiming another tenant, or an edited copy of a delivered one, is rejected by the SaaS.",fb:"If a rejection step shows nothing sent yet, run proof 1 first so the collector has a delivered payload to copy."}
+];
+$("cards").innerHTML=DEFS.map(d=>`<div class="card" id="p${d.id}"><div class="head"><span class="num">${d.id}</span><h3>${d.t}</h3><span class="sp"></span><span class="pill idle v">READY</span><button class="b" data-n="${d.id}">Run</button></div>
+<ol class="steps"></ol><div class="ev"></div><details><summary>Say this · if it fails</summary><p>${esc(d.say)}</p><p class="warn">${esc(d.fb)}</p></details></div>`).join("");
+
+function C(n){const c=$("p"+n),st=c.querySelector(".steps"),ev=c.querySelector(".ev"),v=c.querySelector(".v");return{
+ reset(){st.innerHTML="";ev.innerHTML="";v.className="pill idle v";v.textContent="READY"},
+ running(){v.className="pill run v";v.textContent="RUNNING"},
+ step(t){const li=document.createElement("li");li.className="run";li.innerHTML=`<i class="ic">…</i><span>${esc(t)}</span><span class="dt small"></span>`;st.appendChild(li);const set=(k,i,d)=>{li.className=k;li.querySelector(".ic").textContent=i;if(d!==undefined)li.querySelector(".dt").textContent=d};
+  return{ok:d=>set("ok","✓",d),fail:d=>set("bad","✗",d),info:d=>{li.querySelector(".dt").textContent=d}}},
+ ev(h){ev.innerHTML=h},evEl:ev,
+ verdict(p,t){v.className="pill "+(p?"pass":"fail")+" v";v.textContent=p?"PROOF HOLDS":"FAILED";if(t)this.step(t).fail("")}}}
+
+const bar=(v,c)=>`<div class="bar"><i style="width:${Math.round(Math.min(1,Math.max(0,v))*100)}%;background:${c||"var(--green)"}"></i></div>`;
+const SECRETS=["Hunter2","ghp_FAKEFAKEFAKE1234","sk-proj-9988221100"],RAWLINE="deploy password=Hunter2 token=ghp_FAKEFAKEFAKE1234 api_key=sk-proj-9988221100";
+
+async function p1(c){
+ let s=c.step("Inject a log line with 3 fake credentials into the alpha collector");
+ const r=await col(S.a,"/api/chaos/scenario/secret","POST");
+ s.ok(`seen locally ${r.secrets_seen_locally} · payloads ${r.payloads_emitted}`);
+ const e=(r.evidence||[]).find(x=>x.outbound);if(!e){c.verdict(false,"collector returned no outbound evidence");return false}
+ s=c.step("Scan the exact outbound JSON for each credential");const txt=JSON.stringify(e.outbound),leaks=SECRETS.filter(x=>txt.includes(x));
+ leaks.length?s.fail("LEAK: "+leaks.join(", ")):s.ok(`0 of 3 present in ${txt.length} bytes`);
+ const raw=esc(RAWLINE).replace(/Hunter2|ghp_FAKEFAKEFAKE1234|sk-proj-9988221100/g,m=>`<span class="sec">${m}</span>`);
+ c.ev(`<div class="cols"><div><div class="small bad">RAW · collector only</div><div class="box rawb">${raw}</div></div><div><div class="small ok">OUTBOUND · what crossed the wire</div><div class="box outb">${esc(JSON.stringify(e.outbound,null,1))}</div></div></div>`);
+ s=c.step("Ask the SaaS for that payload and compare SHA-256");let l=null;
+ for(let i=0;i<14&&!(l&&l.complete);i++){await sleep(1000);const q=await saas(S.a,"/api/tracker/payload/"+e.payload_id);l=q.ok?q.j:null}
+ const same=!!l&&l.sha256===e.sha256;same?s.ok(`identical ${e.sha256.slice(0,16)}… · `+((l.hops||[]).map(h=>h.ms+"ms").join(" → "))):s.fail(l?"hash differs":"SaaS never received it");
+ return !leaks.length&&same&&r.secrets_seen_locally>=1}
+
+async function p2(c){
+ let s=c.step("Cut the alpha collector's network for 40 s");const t0=Date.now();await col(S.a,"/api/chaos/scenario/outage?seconds=40","POST");s.ok("outage started");
+ const tl=[];const log=(t,x)=>{tl.push(`<div>+${String(t).padStart(2," ")} s  ${esc(x)}</div>`);c.ev(`<div class="tl">${tl.join("")}</div>`)};
+ let off=null,poor=null,back=null,peak=0;const live=c.step("Watching both sides every second");
+ while(Date.now()-t0<115000){await sleep(1000);const t=Math.round((Date.now()-t0)/1000),cs=await col(S.a,"/api/chaos/status");peak=Math.max(peak,cs.queue_depth);
+  if(!off&&cs.mode==="OFFLINE"){off=t;log(t,"collector OFFLINE · buffering to the local outbox")}
+  const f=(await saas(S.a,"/api/fleet")).j,bad=f&&f.nodes.some(n=>n.stale||n.state==="POOR");
+  if(!poor&&bad){poor=t;log(t,"SaaS marks the nodes stale / POOR (30 s silence rule)")}
+  live.info(`queue ${cs.queue_depth} · ${cs.mode}`);
+  if(off&&cs.mode==="ONLINE"&&cs.outage_remaining_s===0&&cs.queue_depth===0){back=t;log(t,`link back · outbox drained (peak ${peak} queued)`);break}}
+ live.ok(back?`recovered at +${back} s`:"did not recover in time");if(!back)return false;
+ let s2=c.step("Compare the collector's ledger with the SaaS store, id by id and hash by hash");
+ await sleep(1500);const led=await col(S.a,"/api/chaos/ledger"),rec=(await saas(S.a,"/api/tracker/reconcile","POST",{sent:led})).j;
+ rec&&rec.ok&&!rec.duplicate_claims?s2.ok(`${rec.claimed} delivered · missing ${rec.missing_count} · hash mismatch ${rec.hash_mismatch_count} · duplicates ${rec.duplicates_stored}`):s2.fail(JSON.stringify(rec).slice(0,90));
+ log(back,`ledger reconciled: ${rec.claimed} sent, ${rec.missing_count} missing, ${rec.hash_mismatch_count} mismatched`);
+ return !!poor&&peak>0&&!!rec&&rec.ok&&rec.missing_count===0&&rec.claimed>0}
+
+let FIX=null;
+async function warmCheck(){const f=(await saas(S.a,"/api/fleet")).j;if(!f||!f.nodes.length)return{n:0,warm:false};const b=(await saas(S.a,"/api/aiops/baselines/"+f.nodes[0].node)).j;return{n:b?b.cpu.n:0,warm:!!(b&&b.cpu.warm)}}
+async function prime(){await col(S.a,"/api/chaos/scenario/prime?ticks=40","POST");await sleep(5000);await saas(S.a,"/api/aiops/baselines/rebuild","POST");for(let i=0;i<14;i++){await sleep(1000);if((await warmCheck()).warm)return true}return false}
+async function p3(c){
+ FIX=null;let s=c.step("Detectors need a warm baseline");let w=await warmCheck();
+ if(!w.warm){s.info("priming with 40 calm samples…");if(!await prime()){s.fail("baselines not warm");return false}}s.ok("warm");
+ s=c.step("Wait for a calm fleet (no open incident from earlier runs)");let calm=false;
+ for(let i=0;i<45&&!calm;i++){const l=(await saas(S.a,"/api/incidents?limit=20")).j||[];calm=!l.some(x=>x.status==="open");if(!calm)await sleep(1000)}calm?s.ok("calm"):s.fail("an earlier incident is still open");
+ const t0=Date.now()/1000;s=c.step("Inject a DB CPU spike with app-01 latency (6 ticks)");const r=await col(S.a,"/api/chaos/scenario/incident?ticks=6","POST");s.ok(`${r.payloads_emitted} payloads`);
+ s=c.step("Wait for the incident and its root cause");let inc=null;
+ for(let i=0;i<30&&!inc;i++){await sleep(1000);const l=(await saas(S.a,"/api/incidents?limit=10")).j||[];inc=l.find(x=>x.status==="open"&&x.root_label==="db-01"&&x.last_ts>=t0-60)||null}
+ if(!inc){s.fail("no incident opened");return false}
+ let d=(await saas(S.a,"/api/incidents/"+inc.id)).j;s.ok(`${d.ref}: ${d.root_label} · ${Math.round(d.confidence*100)}% · ${((Date.now()/1000)-t0).toFixed(1)} s`);
+ s=c.step("Show the evidence: z-scores against each node's own baseline");const an=((await saas(S.a,"/api/aiops/anomalies?state=open&limit=30")).j||[]).filter(a=>a.detected_ts>=t0-60).sort((x,y)=>Math.abs(y.z)-Math.abs(x.z)).slice(0,6);
+ an.length?s.ok(`${an.length} anomalies · max |z| ${Math.abs(an[0].z).toFixed(1)}`):s.fail("none");
+ s=c.step("Wait for a drafted fix and its digital-twin prediction");let rem=null;
+ for(let i=0;i<16&&!rem;i++){d=(await saas(S.a,"/api/incidents/"+inc.id)).j;rem=(d.remediations||[]).find(x=>x.status==="pending_approval"&&x.reversible)||null;if(!rem)await sleep(1000)}
+ const rec=(d.recommendations||[])[0];rem?s.ok(`${rem.action||"fix"} · ${rem.risk||""} risk`):s.fail("none drafted (policy cooldown after a recent approval?)");
+ const f=(d.explanation.factors||[]).map(x=>`<tr><td>${esc(x.name)}</td><td style="width:40%">${bar(x.value)}</td><td class="mono">${x.contribution.toFixed(2)}</td><td class="small">${esc(x.note)}</td></tr>`).join("");
+ const chain=(d.explanation.chain||[]).map(x=>`<b>${esc(x.label)}</b>${x.role==="root"?' <span class="pill fail">ROOT</span>':""}`).join(' &nbsp;←&nbsp; ');
+ c.ev(`<div class="small">${esc(d.summary)}</div><div style="margin:6px 0">${chain}</div><table><tr><th>FACTOR</th><th></th><th>PTS</th><th></th></tr>${f}</table>
+  <table style="margin-top:6px"><tr><th>NODE</th><th>METRIC</th><th>VALUE</th><th>BASELINE</th><th>z</th></tr>${an.map(a=>`<tr><td>${esc(a.label)}</td><td>${esc(a.metric_label||a.metric)}</td><td class="mono">${a.value}</td><td class="mono">${(+a.mean).toFixed(1)} ± ${(+a.sigma).toFixed(1)}</td><td class="mono bad">${(+a.z).toFixed(1)}</td></tr>`).join("")}</table>
+  <div style="margin-top:8px">${rec?`<b>${esc(rec.title)}</b> <span class="small">risk ${esc(rec.risk)} · confidence ${Math.round(rec.confidence*100)}% · twin predicts <b class="ok">${esc(rec.predicted&&rec.predicted.state||"")}</b> (an estimate)</span>`:""}</div>
+  <div style="margin-top:8px"><button id="fxa" ${rem?"":"disabled"}>Approve (simulated)</button> <button id="fxr" class="sec" disabled>Roll back</button> <span id="fxs" class="small"></span></div>`);
+ FIX=rem;$("fxa").onclick=async()=>{const q=await saas(S.a,`/api/remediation/${rem.id}/approve`,"POST",{});$("fxs").textContent=q.ok?`${q.j.status} — SIMULATION, nothing real was touched`:"refused: "+(q.j&&q.j.detail);$("fxr").disabled=!q.ok;$("fxa").disabled=true};
+ $("fxr").onclick=async()=>{const q=await saas(S.a,`/api/remediation/${rem.id}/rollback`,"POST",{});$("fxs").textContent=q.ok?q.j.status:"refused: "+(q.j&&q.j.detail);$("fxr").disabled=true};
+ return d.root_label==="db-01"&&(d.explanation.factors||[]).length>0&&an.some(a=>Math.abs(a.z)>=3)&&!!rec}
+
+async function p4(c){
+ let s=c.step("Both tenants sign in; each sees only its own nodes");const [fa,fb]=await Promise.all([saas(S.a,"/api/fleet"),saas(S.b,"/api/fleet")]);
+ const na=new Set(fa.j.nodes.map(n=>n.node)),nb=new Set(fb.j.nodes.map(n=>n.node)),shared=[...na].filter(x=>nb.has(x));
+ !shared.length&&na.size&&nb.size?s.ok(`alpha ${na.size} nodes (${S.a.region.toUpperCase()}) · beta ${nb.size} nodes (${S.b.region.toUpperCase()}) · shared 0`):s.fail("overlap or empty");
+ s=c.step("Beta asks for alpha's payload, node history and incident");const rp=(await saas(S.a,"/api/tracker/recent?limit=1")).j[0],ri=((await saas(S.a,"/api/incidents?limit=1")).j||[])[0],ghost=await saas(S.b,"/api/tracker/payload/00000000-0000-4000-8000-000000000000");
+ const q=[await saas(S.b,"/api/tracker/payload/"+rp.payload_id),await saas(S.b,"/api/nodes/"+[...na][0]+"/history")];if(ri)q.push(await saas(S.b,"/api/incidents/"+ri.id));
+ const none=x=>x.status===404||(x.ok&&Array.isArray(x.j)&&!x.j.length),alike=q.every(none)&&ghost.status===404;
+ const lab=x=>x.status===404?"404":(none(x)?"0 rows":"LEAK "+x.status);
+ alike?s.ok(`${q.map(lab).join(" · ")} · payloads answer 404, as for one that never existed`):s.fail(q.map(lab).join(" · "));
+ const rj=x=>((x.saas_response||{}).rejected||[])[0],refuse=async(label,kind,why)=>{const st=c.step(label),x=await col(S.a,"/api/chaos/scenario/corrupt?kind="+kind,"POST"),r=rj(x),ok=!!r&&r.reason.startsWith(why);ok?st.ok("refused · "+r.reason.slice(0,60)):st.fail(JSON.stringify(x).slice(0,80));return ok};
+ const ra=await refuse("Alpha sends a payload that claims another tenant","tenant","tenant_mismatch"),rb=await refuse("Alpha sends an edited copy of a delivered payload","tamper","payload_id_conflict"),rc=await refuse("Alpha adds a field outside the allow-list","extra","schema");
+ c.ev(`<table><tr><th></th><th>TENANT</th><th>REGION</th><th>STORE</th></tr><tr><td>alpha</td><td class="mono">${esc(S.a.tenant)}</td><td>${S.a.region.toUpperCase()}</td><td class="mono">saas_${S.a.region}.db</td></tr><tr><td>beta</td><td class="mono">${esc(S.b.tenant)}</td><td>${S.b.region.toUpperCase()}</td><td class="mono">saas_${S.b.region}.db</td></tr></table>`);
+ return !shared.length&&alike&&ra&&rb&&rc}
+
+const PROOF={1:p1,2:p2,3:p3,4:p4},BUSY={},RESULT={};
+async function run(n){if(BUSY[n])return RESULT[n];BUSY[n]=true;if(!T0)T0=Date.now();const c=C(n),btn=document.querySelector(`#p${n} .b`);c.reset();c.running();btn.disabled=true;
+ try{RESULT[n]=!!await PROOF[n](c)}catch(e){RESULT[n]=false;c.step("Error").fail(e.message)}
+ const v=$("p"+n).querySelector(".v");v.className="pill "+(RESULT[n]?"pass":"fail")+" v";v.textContent=RESULT[n]?"PROOF HOLDS":"FAILED";btn.disabled=false;BUSY[n]=false;sum();return RESULT[n]}
+function sum(){const k=Object.values(RESULT).filter(Boolean).length;$("sum").textContent=k+"/4";$("sum").className="mono "+(k===4?"ok":"")}
+async function all(){$("all").disabled=true;for(const n of [1,3,4,2])await run(n);$("all").disabled=false}
+document.querySelectorAll(".b").forEach(b=>b.onclick=()=>run(+b.dataset.n));$("all").onclick=all;
+$("rst").onclick=()=>{T0=null;for(const n of [1,2,3,4]){C(n).reset();delete RESULT[n]}sum()};
+document.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"||e.metaKey||e.ctrlKey)return;if("1234".includes(e.key)&&e.key)run(+e.key);if(e.key==="r"||e.key==="R")all()});
+
+let lastAudit=0,aud=null;
+async function trust(){try{const [t,f,al,sm]=await Promise.all([saas(S.a,"/api/tracker?window_s=600"),saas(S.a,"/api/fleet"),saas(S.a,"/api/alerts/summary"),saas(S.a,"/api/aiops/summary")]);
+ if(Date.now()-lastAudit>8000){lastAudit=Date.now();aud=(await saas(S.a,"/api/audit/verify")).j}const w=await warmCheck(),tk=t.j,fl=f.j,fu=tk.funnel,p95=tk.target.measured_p95_s;
+ const tile=(k,v,sub,cls)=>`<div class="tile"><span>${k}</span><b class="${cls||""}">${v}</b><div class="small">${sub}</div></div>`;
+ $("trust").innerHTML=tile("EVENT → DASHBOARD p95",p95==null?"–":p95+" s",`target ${tk.target.p95_s} s · measured over ${tk.hops.event_to_published.n}`,tk.target.met?"ok":"bad")
+  +tile("DELIVERED",fu.published,`received ${fu.received} · stored ${fu.stored} · stuck ${tk.stuck}`,tk.stuck?"warn":"ok")
+  +tile("AUDIT CHAIN",aud&&aud.ok?"verified":"BROKEN",aud?`${aud.rows} entries, hash-chained`:"…",aud&&aud.ok?"ok":"bad")
+  +tile("FLEET",fl.overall,`collector ${fl.collector?(fl.collector.offline?"OFFLINE":"online · silent "+fl.collector.silent_s+" s"):"–"}`,fl.overall==="EXCELLENT"||fl.overall==="GOOD"?"ok":"warn")
+  +tile("ALERT NOISE",al.j.noise_reduction_pct==null?"–":Math.round(al.j.noise_reduction_pct)+"%",`${al.j.alerts_shown} shown · ${al.j.folded_repeats} folded`)
+  +tile("DETECTORS",w.warm?"warm":"cold",`${w.n}/30 samples · <a href="#" id="pr" style="color:var(--blue)">prime</a>`,w.warm?"ok":"warn");
+ const pr=$("pr");if(pr)pr.onclick=async e=>{e.preventDefault();pr.textContent="priming…";await prime()}}catch(e){}}
+setInterval(()=>{if(T0){const s=Math.floor((Date.now()-T0)/1000);$("clock").textContent=Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}},500);
+
+$("go").onclick=async()=>{$("err").textContent="";try{S.a.col=$("ac").value.replace(/\/$/,"");S.b.col=$("bc").value.replace(/\/$/,"");
+ await login(S.a,$("au").value,$("ap").value);await login(S.b,$("bu").value,$("bp").value);
+ if(S.a.role!=="admin"||S.b.role!=="admin")throw new Error("both logins must be admins");
+ $("login").hidden=true;$("board").hidden=false;$("who").textContent=`alpha ${S.a.region.toUpperCase()} · beta ${S.b.region.toUpperCase()}`;trust();setInterval(trust,2500)}catch(e){$("err").textContent=e.message}};
+</script></body></html>

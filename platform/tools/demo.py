@@ -1,6 +1,8 @@
 """One-command demo runner for the three 'extras'. Nothing here is mocked: it starts the real SaaS and real collectors.
 
   python3 tools/demo.py up      SaaS :8000 + alpha collector :8001 + beta collector :8002 (Ctrl-C stops all)
+  python3 tools/demo.py preflight [--fix]   demo-day readiness check against a running `up` (--fix primes cold detectors)
+  python3 tools/demo.py boardcheck          drives the /demo Proof Board in headless Chrome on a throw-away stack (needs Playwright)
   python3 tools/demo.py drill   self-checking run in a throw-away data dir (ports 18000-18002), prints PASS/FAIL, exit 0 only if all pass
         1. two tenants      each tenant sees only its own data; IN and EU land in separate region files
         2. CLI scenarios    secret / dup / incident / outage via tools/inject.py (the same commands you run by hand)
@@ -47,8 +49,8 @@ def wait(fn, what, timeout=40, every=0.4):
 
 
 class Stack:
-    def __init__(self, data: Path, saas_port, ports: dict, speed="1"):
-        self.data, self.saas_port, self.ports, self.speed = data, saas_port, ports, speed       # ports: {"alpha": 8001, "beta": 8002}
+    def __init__(self, data: Path, saas_port, ports: dict, speed="1", source="file"):
+        self.data, self.saas_port, self.ports, self.speed, self.source = data, saas_port, ports, speed, source       # ports: {"alpha": 8001, "beta": 8002}
         self.procs = {}
         data.mkdir(parents=True, exist_ok=True)
         self.logs = {}
@@ -65,7 +67,8 @@ class Stack:
     def start_collector(self, short):
         port = self.ports[short]
         self._spawn(f"collector-{short}", ["-m", "collector.main", "--port", str(port)],
-                    {"TENANT": f"tenant-{short}", "SAAS_URL": f"http://127.0.0.1:{self.saas_port}/ingest", "SPEED": self.speed,
+                    {"TENANT": f"tenant-{short}", "SAAS_URL": f"http://127.0.0.1:{self.saas_port}/ingest", "SPEED": self.speed, "SOURCES": self.source,
+                     "CHAOS_ORIGINS": f"http://127.0.0.1:{self.saas_port},http://localhost:{self.saas_port}",
                      "COLLECTOR_DB": str(self.data / f"collector_{short}.db")})
         wait(lambda: http("GET", f"http://127.0.0.1:{port}/api/status"), f"collector {short}")
 
@@ -112,7 +115,7 @@ class Stack:
 def up():
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))    # `kill` stops the children too
     data = ROOT / "data"
-    st = Stack(data, 8000, {"alpha": 8001, "beta": 8002})
+    st = Stack(data, 8000, {"alpha": 8001, "beta": 8002}, source=os.getenv("DEMO_STREAM", "calm"))    # calm = healthy synthetic feed, faults only when injected
     try:
         st.start_saas()
         for t in ("alpha", "beta"):
@@ -231,6 +234,26 @@ def drill():
             bg.terminate()
             st.drained("alpha")
 
+        print("[2c] P4: Proof Board evidence")
+        sb, pa = f"http://127.0.0.1:{st.saas_port}", f"http://127.0.0.1:{st.ports['alpha']}"
+        page = urllib.request.urlopen(f"{sb}/demo", timeout=10).read().decode()
+        check("/demo serves the Proof Board (4 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated")) and "tenant-alpha" not in page)
+        cx = {"X-Chaos": "1", "Origin": sb}
+        ev = http("POST", f"{pa}/api/chaos/scenario/secret", None, headers=cx)
+        check("secret scenario returns outbound evidence with 0 credentials", ev["evidence"] and all(e["secrets_in_outbound"] == 0 for e in ev["evidence"]) and not any(x.decode() in json.dumps(ev) for x in FAKE_SECRETS), f"{len(ev['evidence'])} payloads")
+        st.drained("alpha")
+        time.sleep(2)
+        led = http("GET", f"{pa}/api/chaos/ledger", None, headers={"Origin": sb})
+        rc = http("POST", f"{sb}/api/tracker/reconcile", {"sent": led}, ta)
+        check("collector ledger reconciles exactly with the SaaS store", rc["ok"] and rc["missing_count"] == 0 and rc["hash_mismatch_count"] == 0, f"{rc['claimed']} sent, {rc['missing_count']} missing")
+        try:
+            http("POST", f"{sb}/api/aiops/baselines/rebuild", {}, st.login("alpha", "viewer"))
+            vok = True
+        except urllib.error.HTTPError as e:
+            vok = e.code != 403
+        check("only an admin can rebuild baselines (viewer 403)", not vok)
+        check("baseline rebuild is audited", http("POST", f"{sb}/api/aiops/baselines/rebuild", {}, ta)["nodes"] >= 1 and any(e["action"] == "baselines_rebuilt" for e in st.saas(ta, "/api/audit?limit=50")))
+
         print("[3] crash recovery (kill -9)")
         before = st.status("alpha")["sent"]
         st.kill9_saas()
@@ -257,8 +280,112 @@ def drill():
     return 1 if bad else 0
 
 
+def preflight(fix=False, saas="http://127.0.0.1:8000", alpha="http://127.0.0.1:8001", beta="http://127.0.0.1:8002"):
+    """Demo-day readiness against a running `up` stack. FAIL = the demo will visibly break; WARN = it will work but look off."""
+    rows = []
+
+    def chk(name, level, detail=""):
+        rows.append((name, level, detail))
+        print(f"  {level:4}  {name}" + (f"  - {detail}" if detail else ""))
+    try:
+        http("GET", f"{saas}/healthz")
+        chk("SaaS reachable", "PASS", saas)
+    except Exception as e:
+        chk("SaaS reachable", "FAIL", f"{saas}: {e}; run `python3 tools/demo.py up` first")
+        return 1
+    toks = {}
+    for short, col in (("alpha", alpha), ("beta", beta)):
+        try:
+            sta = http("GET", f"{col}/api/status")
+            toks[short] = http("POST", f"{saas}/api/login", {"username": f"{short}-admin", "password": f"{short}-demo-pass"})["token"]
+            chk(f"{short}: collector online, admin login works", "PASS" if sta["mode"] == "ONLINE" else "FAIL", f"{sta['mode']}, sources {sta['sources']}, queue {sta['queue_depth']}")
+            if sta["sources"] != ["calm"]:
+                chk(f"{short}: healthy feed", "WARN", f"sources {sta['sources']}: the sample stream loops its own faults; start with DEMO_STREAM=calm")
+        except Exception as e:
+            chk(f"{short}: collector + login", "FAIL", str(e)[:90])
+    if "alpha" not in toks:
+        return 1
+    ta = toks["alpha"]
+    try:
+        req = urllib.request.Request(f"{alpha}/api/chaos/status", headers={"Origin": saas, "X-Chaos": "1"})
+        urllib.request.urlopen(req, timeout=5)
+        pre = urllib.request.Request(f"{alpha}/api/chaos/scenario/secret", method="OPTIONS", headers={"Origin": saas, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "x-chaos"})
+        chk("collector accepts the SaaS page's origin (CORS)", "PASS" if urllib.request.urlopen(pre, timeout=5).status == 204 else "FAIL")
+    except Exception as e:
+        chk("collector accepts the SaaS page's origin (CORS)", "FAIL", f"{e}; start the collector with CHAOS_ORIGINS={saas}")
+    n0 = (http("GET", f"{saas}/api/fleet", None, ta)["nodes"] or [{}])[0].get("node")
+    warm = False
+    if n0:
+        b = http("GET", f"{saas}/api/aiops/baselines/{n0}", None, ta)
+        warm = b["cpu"]["warm"]
+        if not warm and fix:
+            http("POST", f"{alpha}/api/chaos/scenario/prime?ticks=40", None, headers={"X-Chaos": "1", "Origin": saas})
+            time.sleep(5)
+            http("POST", f"{saas}/api/aiops/baselines/rebuild", {}, ta)
+            warm = bool(wait(lambda: http("GET", f"{saas}/api/aiops/baselines/{n0}", None, ta)["cpu"]["warm"], "baselines to warm", 20))
+        chk("detectors warm", "PASS" if warm else "WARN", f"cpu baseline n={b['cpu']['n']}" + ("" if warm else "; run with --fix to prime, or wait ~150 s"))
+    else:
+        chk("detectors warm", "WARN", "no nodes yet")
+    inc = [i for i in http("GET", f"{saas}/api/incidents?limit=20", None, ta) if i["status"] == "open"]
+    chk("no open incident left over", "PASS" if not inc else "WARN", f"{len(inc)} open; they clear on their own once nodes are healthy for 3 samples")
+    mw = [w for w in http("GET", f"{saas}/api/maintenance", None, ta) if w["status"] == "active"]
+    chk("no active maintenance window (it would hide the incident)", "PASS" if not mw else "FAIL", f"{len(mw)} active")
+    cfg = http("GET", f"{saas}/api/remediation/config", None, ta)
+    chk("autonomy is 'assisted' and no change freeze", "PASS" if cfg["autonomy"] == "assisted" and not cfg.get("change_freeze") else "WARN", f"autonomy={cfg['autonomy']} freeze={cfg.get('change_freeze')}")
+    tk = http("GET", f"{saas}/api/tracker?window_s=600", None, ta)
+    p95 = tk["target"]["measured_p95_s"]
+    chk("event-to-dashboard p95 within target", "PASS" if p95 is None or tk["target"]["met"] else "FAIL", f"{p95} s vs {tk['target']['p95_s']} s")
+    chk("audit chain verifies", "PASS" if http("GET", f"{saas}/api/audit/verify", None, ta)["ok"] else "FAIL")
+    wh = http("GET", f"{saas}/api/webhooks", None, ta)
+    chk("no outbound webhook configured (nothing can leave by accident)", "PASS" if not wh.get("hooks") and not wh.get("webhooks") else "WARN", "configured hooks are listed in the tracker")
+    bad = [r for r in rows if r[1] == "FAIL"]
+    print(f"\n[preflight] {len([r for r in rows if r[1] == 'PASS'])} pass, {len([r for r in rows if r[1] == 'WARN'])} warn, {len(bad)} fail" + ("  - ready: open " + saas + "/demo" if not bad else ""))
+    return 1 if bad else 0
+
+
+def boardcheck():
+    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all four proofs."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("boardcheck needs Playwright: pip install playwright && playwright install chromium")
+        return 2
+    tmp = Path(tempfile.mkdtemp(prefix="cicada-board-"))
+    st = Stack(tmp, 18100, {"alpha": 18101, "beta": 18102}, speed="1", source="calm")
+    ok, detail = False, ""
+    try:
+        st.start_saas()
+        for t in ("alpha", "beta"):
+            st.start_collector(t)
+        time.sleep(6)
+        with sync_playwright() as p:
+            b = p.chromium.launch()
+            pg = b.new_page(viewport={"width": 1500, "height": 1100})
+            pg.goto(f"http://127.0.0.1:{st.saas_port}/demo")
+            pg.fill("#ac", f"http://127.0.0.1:{st.ports['alpha']}")
+            pg.fill("#bc", f"http://127.0.0.1:{st.ports['beta']}")
+            pg.click("#go")
+            pg.wait_for_selector("#board:not([hidden])", timeout=10000)
+            pg.click("#all")
+            pg.wait_for_function("document.querySelector('#all').disabled===false", timeout=300000)
+            pg.wait_for_timeout(500)
+            verdicts = pg.evaluate("[1,2,3,4].map(n=>document.querySelector('#p'+n+' .v').textContent)")
+            bad = pg.evaluate("[...document.querySelectorAll('.steps li.bad')].map(l=>l.textContent)")
+            pg.screenshot(path=str(tmp / "board.png"), full_page=True)
+            b.close()
+        ok = all(v == "PROOF HOLDS" for v in verdicts)
+        detail = f"{verdicts} {bad}"
+    except Exception as e:
+        detail = repr(e)
+    finally:
+        st.stop()
+    print(f"[boardcheck] {'PASS' if ok else 'FAIL'}  {detail}\n[boardcheck] screenshot + logs in {tmp}")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["up", "drill"])
+    ap.add_argument("cmd", choices=["up", "drill", "preflight", "boardcheck"])
+    ap.add_argument("--fix", action="store_true", help="preflight: prime the detectors when they are cold")
     a = ap.parse_args()
-    sys.exit(drill() if a.cmd == "drill" else up())
+    sys.exit({"drill": drill, "up": up, "boardcheck": boardcheck}.get(a.cmd, lambda: preflight(a.fix))())

@@ -119,16 +119,21 @@ def create_app(settings=None) -> FastAPI:
                 "last_error": sender.last_error}
 
     @app.post("/api/chaos/scenario/{name}")
-    async def scenario(name: str, n: int = 15, seconds: float = 30, kind: str = "tamper"):
+    async def scenario(name: str, n: int = 15, seconds: float = 30, kind: str = "tamper", ticks: int = 3):
         """One-click scenarios for the demo; each returns what the system did, so the panel can show proof."""
         if name in scenarios.EVENT_SCENARIOS:
             before_nm, before_bl = pipe.near_miss, pipe.blocked
             ids = []
-            for raw in scenarios.build(name, n=min(max(n, 1), 200)):
+            for raw in scenarios.build(name, n=min(max(n, 1), 200), ticks=min(max(ticks, 1), 60)):
                 ids += pipe.process_event(normalise(raw))
             ids += pipe.flush_all()
+            keep, ev = set(ids[:5]), []
+            for r in pipe.egress.list(50):                    # what crossed the boundary for these payloads; never the raw side
+                if r["payload_id"] in keep:
+                    ev.append({"payload_id": r["payload_id"], "status": r["status"], "sha256": r["sha256"], "matched_pattern": r["matched_pattern"],
+                               "secrets_in_outbound": len(find_secrets(r["json"])), "outbound": json.loads(r["json"])})
             return {"scenario": name, "payloads_emitted": len(ids), "secrets_seen_locally": pipe.near_miss - before_nm,
-                    "blocked_at_boundary": pipe.blocked - before_bl}
+                    "blocked_at_boundary": pipe.blocked - before_bl, "evidence": ev}
         if name == "outage":
             sender.start_outage(min(max(seconds, 1), 120))
             return {"scenario": name, "outage_s": seconds}
@@ -140,6 +145,11 @@ def create_app(settings=None) -> FastAPI:
         if name == "corrupt":
             return {"scenario": name, "kind": kind, "saas_response": await sender.send_corrupt(kind)}
         raise HTTPException(404, f"unknown scenario {name!r}")
+
+    @app.get("/api/chaos/ledger")
+    def ledger(limit: int = 2000):
+        """What this collector says it delivered: ids and hashes only (no raw, no payload bodies). The SaaS reconciles it exactly."""
+        return [{"payload_id": r["payload_id"], "sha256": r["sha256"]} for r in pipe.egress.list(min(max(limit, 1), 5000), status="SENT")]
 
     @app.post("/api/chaos/outage")
     def outage(seconds: float = 30):

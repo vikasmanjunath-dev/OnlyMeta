@@ -202,6 +202,15 @@ class AIOps:
             except Exception as e:                                                            # noqa: BLE001
                 print("draft error:", type(e).__name__, e)
 
+    def rebuild_baselines(self, tenant: str, actor: str, now: float, ip: str = "") -> int:
+        """Forget the in-memory baselines of every node of a tenant; each one is re-learned from stored history (median/MAD trim, same
+        path as after a restart) on its next sample. Used after a backfill, or before a demo to start from clean, warm baselines."""
+        nodes = [r["node"] for r in self.eng.store_of(tenant).q("SELECT node FROM node_state WHERE tenant_id=?", (tenant,))]
+        for n in nodes:
+            self.det.forget(tenant, n)
+        self.maint.audit.record(tenant, actor, "baselines_rebuilt", {"nodes": len(nodes)}, ip)
+        return len(nodes)
+
     # ---------------------------------------------------------------- reads
     def anomalies(self, tenant: str, state: Optional[str] = None, limit: int = 100) -> list:
         sql, args = "SELECT * FROM anomalies WHERE tenant_id=? ", [tenant]

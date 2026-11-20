@@ -24,7 +24,7 @@ def _ticks(n, make, now, every=5):
 def build(name: str, n: int = 15, ms: float = 400, pct: float = 95, ticks: int = 3, now=None) -> list:
     now = now or datetime.now(timezone.utc)
     if name == "secret":
-        return [ev("demo-01", raw_log="deploy password=Hunter2 token=ghp_FAKEFAKEFAKE1234", api_key="sk-proj-9988221100")]
+        return [ev("app-01", raw_log="deploy password=Hunter2 token=ghp_FAKEFAKEFAKE1234", api_key="sk-proj-9988221100")]
     if name == "bruteforce":
         return [ev("db-01", src_ip="192.168.1.50", user="root", auth_failed_count=1, raw_log="Failed login for root from 192.168.1.50") for _ in range(n)]
     if name == "servicedown":
@@ -38,7 +38,9 @@ def build(name: str, n: int = 15, ms: float = 400, pct: float = 95, ticks: int =
     if name == "incident":
         return _ticks(ticks, lambda t: [ev("db-01", ts=t, cpu_percent=92, mem_percent=91, latency_ms=120),
                                         ev("app-01", ts=t, latency_ms=280, packet_loss_pct=2.5, cpu_percent=88)], now)
+    if name == "prime":                       # calm back-dated history so detectors are warm before a demo (synthetic, replay-flagged)
+        return _ticks(max(ticks, 1), lambda t: [ev(n, ts=t) for n in ("app-01", "db-01", "net-01")], now)
     raise KeyError(name)
 
 
-EVENT_SCENARIOS = ("secret", "bruteforce", "servicedown", "ooo", "cpu", "latency", "incident")
+EVENT_SCENARIOS = ("secret", "bruteforce", "servicedown", "ooo", "cpu", "latency", "incident", "prime")

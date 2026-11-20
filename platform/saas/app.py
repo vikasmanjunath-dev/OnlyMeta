@@ -18,7 +18,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from collector.remote_config import validate
 from contracts.schema import SUPPORTED_SCHEMA_VERSIONS
@@ -292,6 +292,10 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
     def aiops_anomalies(state: Optional[str] = None, limit: int = 100, u: dict = Depends(user)):
         return ai.anomalies(u["tenant"], state, min(limit, 500))
 
+    @app.post("/api/aiops/baselines/rebuild")
+    def aiops_rebuild(request: Request, u: dict = Depends(admin)):
+        return {"nodes": ai.rebuild_baselines(u["tenant"], u["user"], time.time(), ip_of(request))}
+
     @app.get("/api/aiops/baselines/{node}")
     def aiops_baselines(node: str, u: dict = Depends(user)):
         if not eng.store_of(u["tenant"]).one("SELECT 1 x FROM node_state WHERE tenant_id=? AND node=?", (u["tenant"], node)):
@@ -502,6 +506,14 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
         if not isinstance(claimed, list) or len(claimed) > 100_000 or not all(isinstance(c, dict) and "payload_id" in c for c in claimed):
             raise HTTPException(400, "expected {\"sent\": [{payload_id, sha256}]}")
         return tracker.reconcile(eng.store_of(u["tenant"]), u["tenant"], claimed)
+
+    @app.get("/demo", response_class=HTMLResponse)
+    def demo_page():
+        return (UI / "demo.html").read_text()
+
+    @app.get("/", include_in_schema=False)
+    def root():
+        return RedirectResponse("/demo")
 
     @app.get("/tracker", response_class=HTMLResponse)
     def tracker_page():

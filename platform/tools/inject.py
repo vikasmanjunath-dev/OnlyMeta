@@ -44,7 +44,7 @@ def main():
     a = ap.parse_args()
     b = a.base
     if a.scenario == "secret":
-        print(post(b, "/api/inject", [ev("demo-01", raw_log="deploy password=Hunter2 token=ghp_FAKEFAKEFAKE1234",
+        print(post(b, "/api/inject", [ev("app-01", raw_log="deploy password=Hunter2 token=ghp_FAKEFAKEFAKE1234",
                                          api_key="sk-proj-9988221100")]))
     elif a.scenario == "outage":
         print(post(b, f"/api/chaos/outage?seconds={a.seconds}"))
