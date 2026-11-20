@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS remediations(
   created_ts REAL, expires_ts REAL, executed_ts REAL, verify_due_ts REAL, verdict TEXT, rollback_of INTEGER, rolled_back_ts REAL,
   rationale TEXT, predicted TEXT, precondition TEXT, signature TEXT, pattern TEXT);
 CREATE INDEX IF NOT EXISTS ix_rem ON remediations(tenant_id, status);
+CREATE TABLE IF NOT EXISTS share_links(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT, kind TEXT, target INTEGER, token_hash TEXT UNIQUE, label TEXT,
+  created_by TEXT, created_ts REAL, expires_ts REAL, revoked_ts REAL, views INTEGER DEFAULT 0, last_view_ts REAL);
 CREATE TABLE IF NOT EXISTS commands(
   id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT, remediation_id INTEGER, label TEXT, action TEXT, params TEXT, status TEXT,
   created_ts REAL, exp_ts REAL, sent_ts REAL, done_ts REAL, kid TEXT, result TEXT);

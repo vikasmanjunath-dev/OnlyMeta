@@ -21,3 +21,8 @@ All commands: `python3 tools/ctl.py <cmd>` (or `make <target>`). Output is JSON;
 - Offboarding does not delete tenant rows (audit/legal hold). Purge by policy, not by this tool.
 - New regions get their own database file on SaaS start; residency is enforced per file.
 - Docker files are untested in the authoring sandbox (no daemon); CI runs the same drill natively.
+
+## Console and share links (P12)
+- `/console` is the customer UI (also `/`): overview + dependency map, incidents with one-click approve/reject/rollback, fleet sparklines, Ask, operations (autonomy, maintenance, webhooks), settings (people, keys, share links, audit), setup wizard. ⌘K / `/` opens the command palette; `g` then `o i f a p s` jumps between pages.
+- **Share links** (Settings → Share links, or "Share read-only link" on an incident): public, no login, expiring (default 7 d, max 90 d), revocable, rate-limited, `noindex`. A status link shows component health + open incidents; an incident link shows the story and actions taken. No metrics, users, IPs, node ids or approver identities are exposed. Only a SHA-256 of the token is stored; create/revoke are audited.
+- Check it in a real browser against a running stack: `make console-check USER_NAME=alpha-admin USER_PASS=...` (`tools/consolecheck.py`, add `--shots dir` for screenshots).

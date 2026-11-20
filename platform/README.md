@@ -181,3 +181,6 @@ Measured here (in-process, no network, one laptop-class core): 10,000 payloads a
 
 ## Operate it (P11)
 `make setup && make up` - generates secrets, starts SaaS + a collector per tenant. `ctl onboard/offboard/backup/restore/doctor`; see `docs/operations.md`.
+
+## Console (P12)
+Open `/console` (root redirects there). Customer-facing UI with live updates, incident actions, Ask, setup wizard and read-only share links; `/tracker` stays the engineering view and `/demo` the proof board. See `docs/operations.md`.

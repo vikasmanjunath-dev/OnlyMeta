@@ -32,6 +32,7 @@ from saas.auth import AuthError, CollectorAuth, KeyService, UserService
 from saas.bus import Bus
 from saas.engine import Engine
 from saas.health import RANK, STATES
+from saas.sharing import Shares
 from saas.settings import Settings, load_settings, regions
 from saas.store import Stores, jl
 from saas.topology import topology
@@ -49,6 +50,7 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
     users, keys = UserService(s, stores), KeyService(s, stores)
     cauth = CollectorAuth(s, keys)
     users.seed()
+    shares = Shares(eng.store_of, stores.for_region, audit, eng, ai, regions(s))
     started = time.time()
 
     @asynccontextmanager
@@ -96,6 +98,7 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
     app.state.engine, app.state.settings, app.state.bus, app.state.stores = eng, s, bus, stores
     app.state.audit, app.state.users, app.state.keys, app.state.cauth = audit, users, keys, cauth
     app.state.aiops = ai
+    app.state.shares = shares
     if s.cors_origins:                                                         # browser dashboards on another origin
         app.add_middleware(CORSMiddleware, allow_origins=list(s.cors_origins), allow_methods=["GET", "POST", "PUT", "DELETE"],
                            allow_headers=["Authorization", "Content-Type"], max_age=600)
@@ -570,7 +573,57 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
 
     @app.get("/", include_in_schema=False)
     def root():
-        return RedirectResponse("/demo")
+        return RedirectResponse("/console")
+
+    # ------------------------------------------------------------------ console + share links
+    PAGE_HEADERS = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
+                    "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}
+    hits: dict = {}
+
+    def public_gate(request: Request):
+        ip, now = ip_of(request), time.time()
+        q = [t for t in hits.get(ip, []) if now - t < 60]
+        if len(q) >= 60:
+            raise HTTPException(429, "slow down")
+        q.append(now)
+        hits[ip] = q
+        if len(hits) > 5000:
+            hits.clear()
+
+    @app.get("/console", response_class=HTMLResponse)
+    def console_page():
+        return HTMLResponse((UI / "console.html").read_text(), headers=PAGE_HEADERS)
+
+    @app.get("/api/shares")
+    def shares_list(u: dict = Depends(admin)):
+        return shares.list(u["tenant"])
+
+    @app.post("/api/shares")
+    def shares_create(body: dict, request: Request, u: dict = Depends(admin)):
+        try:
+            return shares.create(u["tenant"], s.tenants[u["tenant"]]["region"], u["user"], body.get("kind", ""), body.get("incident"), str(body.get("label", "")),
+                                 body.get("ttl_h"), ip=ip_of(request))
+        except (ValueError, TypeError) as e:
+            raise HTTPException(422, str(e))
+
+    @app.delete("/api/shares/{sid}")
+    def shares_revoke(sid: int, request: Request, u: dict = Depends(admin)):
+        if not shares.revoke(u["tenant"], u["user"], sid, ip=ip_of(request)):
+            raise HTTPException(404, "no such active link")
+        return {"ok": True}
+
+    @app.get("/s/{token}", response_class=HTMLResponse)
+    def share_page(token: str, request: Request):
+        public_gate(request)
+        return HTMLResponse((UI / "share.html").read_text(), headers=PAGE_HEADERS)
+
+    @app.get("/s/{token}/data")
+    def share_data(token: str, request: Request):
+        public_gate(request)
+        link = shares.resolve(token)
+        if not link:
+            return JSONResponse({"error": "This link is invalid, expired or was revoked."}, status_code=404, headers=PAGE_HEADERS)
+        return JSONResponse(shares.view(link), headers=PAGE_HEADERS)
 
     @app.get("/tracker", response_class=HTMLResponse)
     def tracker_page():

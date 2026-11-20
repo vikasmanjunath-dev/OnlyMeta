@@ -37,14 +37,14 @@ def saas(tmp_path):
 
 
 # ---------------------------------------------------------------- the page
-def test_demo_page_and_root_redirect(saas):
+def test_demo_page_and_root_redirect_to_console(saas):
     c, *_ = saas
     r = c.get("/demo")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
     for claim in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated"):
         assert claim in r.text
     rr = c.get("/", follow_redirects=False)
-    assert rr.status_code in (302, 307) and rr.headers["location"] == "/demo"
+    assert rr.status_code in (302, 307) and rr.headers["location"] == "/console"
 
 
 def test_demo_page_carries_no_data_and_needs_no_session(saas):

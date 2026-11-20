@@ -166,14 +166,18 @@ def cmd_down(a):
     f = RUN / "pids.json"
     if not f.is_file():
         return {"stopped": []}
-    stopped = []
+    stopped, ports = [], []
     for name, v in json.loads(f.read_text()).items():
+        ports.append(v["port"])
         try:
             os.killpg(v["pid"], signal.SIGTERM)
             stopped.append(name)
         except (ProcessLookupError, PermissionError):
             pass
     f.unlink()
+    t0 = time.time()
+    while time.time() - t0 < 8 and not all(port_free(p) for p in ports):          # wait for the sockets, so an immediate `up` cannot race
+        time.sleep(0.2)
     return {"stopped": stopped}
 
 
