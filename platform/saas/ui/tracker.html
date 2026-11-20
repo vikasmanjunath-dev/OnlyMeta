@@ -1,0 +1,191 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>End-to-end tracker · CICADA</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--line:#2c2c2e;--t:#f5f5f7;--g:#a1a1a6;--g2:#6e6e73;--blue:#0a84ff;--green:#30d158;--orange:#ff9f0a;--red:#ff453a;--purple:#bf5af2}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Arial,sans-serif;padding:32px 40px 60px;max-width:1240px;margin:auto}
+h1{font-size:34px;letter-spacing:-.8px;margin:0 0 4px}h2{font-size:12px;letter-spacing:2px;color:var(--g2);margin:0 0 12px;font-weight:700}
+.sub{color:var(--g);margin-bottom:24px}.grid{display:grid;gap:16px}.g4{grid-template-columns:repeat(4,1fr)}.g2{grid-template-columns:1.2fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+.card{background:var(--card);border-radius:20px;padding:20px;min-width:0}.big{font-size:44px;font-weight:700;letter-spacing:-1.5px}.small{color:var(--g);font-size:13px}
+.pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;color:#000}
+.EXCELLENT{background:var(--green)}.GOOD{background:#64d2ff}.FAIR{background:var(--orange)}.POOR{background:var(--red);color:#fff}.critical{background:var(--red);color:#fff}.high{background:var(--orange)}
+.flow{display:flex;align-items:center;gap:6px}.stage{flex:1;text-align:center}.stage b{display:block;font-size:26px;letter-spacing:-1px}.stage span{font-size:11px;color:var(--g2);letter-spacing:1px}
+.arr{color:var(--g2)}table{width:100%;border-collapse:collapse}td,th{padding:7px 6px;text-align:left;border-top:1px solid var(--line);font-size:13px}th{color:var(--g2);font-size:11px;letter-spacing:1px;border:0}
+tr.row{cursor:pointer}tr.row:hover{background:#2c2c2e}.mono{font-family:ui-monospace,Menlo,Consolas,monospace}.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:10px}.bar i{display:block;height:100%;background:var(--green);transition:width .4s}
+.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--orange)}input,button,select{font:inherit;border-radius:12px;border:1px solid var(--line);background:#000;color:var(--t);padding:10px 14px}button{background:var(--blue);border:0;cursor:pointer;font-weight:600}
+button.sm{padding:5px 11px;font-size:12px}button.ghost{background:#2c2c2e}button.danger{background:var(--red)}
+#login{max-width:340px;margin:12vh auto;text-align:center}#login input{width:100%;margin:6px 0}#app{display:none}.tag{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--g2);color:var(--g);margin-left:4px}
+dialog{background:var(--card);color:var(--t);border:1px solid var(--line);border-radius:20px;padding:24px;min-width:420px}dialog::backdrop{background:#000a}
+.tabs{display:flex;gap:8px;margin:0 0 16px}.tabs button{background:#2c2c2e}.tabs button.on{background:var(--blue)}.sec{display:none}.sec.on{display:block}
+.btns{display:flex;flex-wrap:wrap;gap:8px}.row2{display:flex;justify-content:space-between;align-items:center;padding:5px 0;gap:10px}.dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px}
+</style></head><body>
+<div id="login"><h1>End-to-end tracker</h1><div class="sub">Sign in to your tenant</div>
+<input id="u" placeholder="username" autocomplete="username"><input id="p" type="password" placeholder="password" autocomplete="current-password">
+<button id="go" style="width:100%;margin-top:8px">Sign in</button><div id="err" class="bad small" style="margin-top:10px"></div></div>
+<div id="app">
+<div style="display:flex;justify-content:space-between;align-items:flex-end"><div><h1>Collected to published, measured.</h1><div class="sub" id="who"></div></div><div id="over"></div></div>
+<div class="tabs"><button data-t="track" class="on">Tracker</button><button data-t="alerts">Alerts</button><button data-t="inc" id="tabinc">Incidents</button><button data-t="rem" id="tabrem">Remediation</button><button data-t="fleet">Collectors</button><button data-t="audit" id="tabaudit">Audit &amp; keys</button><button data-t="chaos">Chaos</button><span style="flex:1"></span><button class="ghost" id="out">Sign out</button></div>
+
+<div class="sec on" id="s-track">
+<div class="grid" style="margin-bottom:16px"><div class="card"><h2>PAYLOAD LIFECYCLE · LAST 10 MIN</h2><div class="flow" id="flow"></div><div class="small" id="queue" style="margin-top:8px"></div></div></div>
+<div class="grid g4" style="margin-bottom:16px">
+<div class="card"><h2>P95 EVENT TO DASHBOARD</h2><div class="big" id="p95">-</div><div class="small" id="tgt"></div><div class="bar"><i id="barfill" style="width:0"></i></div></div>
+<div class="card"><h2>DELIVERED</h2><div class="big" id="stored">-</div><div class="small" id="live"></div></div>
+<div class="card"><h2>DUPLICATES ABSORBED</h2><div class="big" id="dups">-</div><div class="small">stored once, ACKed again</div></div>
+<div class="card"><h2>REJECTED / STUCK</h2><div class="big" id="rej">-</div><div class="small" id="stuck"></div></div></div>
+<div class="grid g2" style="margin-bottom:16px">
+<div class="card"><h2>RECENT PAYLOADS (CLICK FOR LINEAGE)</h2><table><thead><tr><th>ID</th><th>NODE</th><th>CATEGORY</th><th>SEVERITY</th><th>LATENCY</th></tr></thead><tbody id="recent"></tbody></table></div>
+<div><div class="card" style="margin-bottom:16px"><h2>LATENCY PER HOP (LIVE, SECONDS)</h2><table><thead><tr><th>HOP</th><th>P50</th><th>P95</th><th>MAX</th></tr></thead><tbody id="hops"></tbody></table><div class="small" id="clock" style="margin-top:10px"></div></div>
+<div class="card" style="margin-bottom:16px"><h2>FLEET</h2><div id="fleet"></div></div>
+<div class="card"><h2>RECONCILE WITH COLLECTOR</h2><div class="small" style="margin-bottom:8px">Export: python3 tools/verify_delivery.py --collector-db data/collector_alpha.db --export sent.json</div><input type="file" id="file" accept=".json"><div id="rec" class="small" style="margin-top:10px"></div></div></div></div></div>
+
+
+<div class="sec" id="s-inc">
+<div class="grid g4" style="margin-bottom:16px"><div class="card"><h2>OPEN INCIDENTS</h2><div class="big" id="i-open">-</div><div class="small" id="i-sub"></div></div>
+<div class="card"><h2>ALERTS FOLDED INTO INCIDENTS</h2><div class="big" id="i-fold">-</div><div class="small" id="i-fold2"></div></div>
+<div class="card"><h2>DETECTION LAG (MEDIAN)</h2><div class="big" id="i-lag">-</div><div class="small">onset to anomaly, measured</div></div>
+<div class="card"><h2>MEAN TIME TO RESOLVE</h2><div class="big" id="i-mttr">-</div><div class="small" id="i-mttr2"></div></div></div>
+<div class="card" style="margin-bottom:16px"><h2>SERVICE LEVELS (MEASURED, LAST HOUR)</h2><div class="grid g4" id="i-slo"></div></div>
+<div id="i-list"></div>
+<div class="card" style="margin-top:16px"><h2>MAINTENANCE WINDOWS (PLANNED WORK DOES NOT OPEN INCIDENTS)</h2>
+<div class="row2 admin-only" id="m-form" style="gap:8px;justify-content:flex-start;margin-bottom:10px"><input id="m-node" placeholder="node label (empty = all)" style="width:190px"><input id="m-min" type="number" value="30" style="width:80px"><span class="small">minutes</span><input id="m-why" placeholder="reason" style="width:240px"><button class="sm" onclick="mwadd()">Set window</button></div>
+<table><thead><tr><th>SCOPE</th><th>STATUS</th><th>ENDS</th><th>REASON</th><th>BY</th><th>SKIPPED</th><th></th></tr></thead><tbody id="m-list"></tbody></table></div>
+<div class="card admin-card" id="wh-card" style="margin-top:16px;display:none"><h2>OUTBOUND NOTIFICATIONS (SIGNED WEBHOOKS, SET IN contracts/webhooks.yaml)</h2><div id="wh" class="small"></div></div>
+<div class="grid g2" style="margin-top:16px"><div class="card"><h2>OPEN ANOMALIES (Z-SCORE VS 15-MIN BASELINE)</h2><table><thead><tr><th>NODE</th><th>METRIC</th><th>VALUE</th><th>BASELINE</th><th>Z</th><th>SINCE</th></tr></thead><tbody id="i-an"></tbody></table></div>
+<div class="card"><h2>FORECASTS (LINEAR TREND)</h2><div id="i-fc" class="small"></div><h2 style="margin-top:18px">RECENT INCIDENTS</h2><table><tbody id="i-hist"></tbody></table></div></div></div>
+<div class="sec" id="s-rem">
+<div class="grid g2" style="margin-bottom:16px"><div class="card"><h2>AUTONOMY (KILL SWITCH)</h2><div class="btns" id="r-aut"></div><div class="small" id="r-autx" style="margin-top:10px"></div>
+<label class="small" style="display:block;margin-top:10px"><input type="checkbox" id="r-frz" style="width:auto"> change freeze (refuse every action)</label></div>
+<div class="card"><h2>SAFETY MODEL</h2><div class="small">Nothing here touches a real system: the actuator is a simulator. Every proposal passes an allow-list and policy, needs an admin (two for high risk), expires if nobody acts, is re-checked before it runs, is verified afterwards and can be rolled back. Every step is in the audit chain.</div><div class="small" id="r-sum" style="margin-top:10px"></div></div></div>
+<div class="card"><h2>PROPOSALS</h2><table><thead><tr><th>REF</th><th>NODE</th><th>ACTION</th><th>RISK</th><th>CONF</th><th>PREDICTED</th><th>STATUS</th><th></th></tr></thead><tbody id="r-list"></tbody></table></div>
+<div class="card" style="margin-top:16px"><h2>POLICY WHAT-IF (REPLAYS YOUR LAST 24 H OF PROPOSALS; SAVES NOTHING)</h2>
+<div class="row2" style="gap:8px;justify-content:flex-start;margin-bottom:10px"><select id="w-aut"><option value="">autonomy: keep</option><option>off</option><option>suggest</option><option>assisted</option><option>auto_low</option></select><span class="small">min confidence</span><input id="w-conf" type="number" step="0.05" min="0" max="1" placeholder="keep" style="width:80px"><span class="small">max auto blast</span><input id="w-bl" type="number" min="0" placeholder="keep" style="width:70px"><label class="small"><input type="checkbox" id="w-frz" style="width:auto"> freeze</label><button class="sm" onclick="whatif()">Replay</button></div><div id="w-out" class="small"></div></div>
+</div>
+<div class="sec" id="s-alerts"><div class="grid g3" style="margin-bottom:16px">
+<div class="card"><h2>NOISE REDUCTION · LAST HOUR</h2><div class="big" id="nr">-</div><div class="small" id="nrd"></div></div>
+<div class="card"><h2>OPEN ALERTS</h2><div class="big" id="open">-</div><div class="small">one per problem, not per event</div></div>
+<div class="card"><h2>FOLDED REPEATS</h2><div class="big" id="fold">-</div><div class="small" id="foldd"></div></div></div>
+<div class="card"><h2>ALERTS</h2><table><thead><tr><th>SEV</th><th>NODE</th><th>WHAT</th><th>COUNT</th><th>SINCE</th><th>STATE</th><th></th></tr></thead><tbody id="alerts"></tbody></table></div></div>
+
+<div class="sec" id="s-fleet"><div class="card"><h2>COLLECTORS</h2><table><thead><tr><th>ID</th><th>STATUS</th><th>LAST DATA</th><th>NODES</th><th>VERSION</th><th>QUEUE</th><th>DROPPED</th><th>BLOCKED</th><th>NEAR-MISS</th><th>SAMPLED OUT</th></tr></thead><tbody id="cols"></tbody></table>
+<div class="small" style="margin-top:10px">Collector self-health arrives inside each payload (schema v2). "Near-miss" = secrets the collector caught before they could leave.</div></div></div>
+
+<div class="sec" id="s-audit"><div class="grid g2">
+<div class="card"><h2>AUDIT LOG <span id="chain" class="small"></span></h2><table><thead><tr><th>WHEN</th><th>WHO</th><th>ACTION</th><th>DETAIL</th></tr></thead><tbody id="aud"></tbody></table></div>
+<div><div class="card" style="margin-bottom:16px"><h2>COLLECTOR KEYS</h2><div id="keys"></div><div class="btns" style="margin-top:12px"><button class="sm" id="rot">Rotate key</button></div><div class="small" id="newkey" style="margin-top:8px;word-break:break-all"></div></div>
+<div class="card"><h2>USERS</h2><div id="users"></div></div></div></div></div>
+
+<div class="sec" id="s-chaos"><div class="card"><h2>CHAOS PANEL · DRIVES THE LOCAL COLLECTOR</h2>
+<div class="row2"><input id="curl" value="http://127.0.0.1:8001" style="flex:1"><button class="sm ghost" id="cst">Check</button></div><div class="small" id="cmsg" style="margin:8px 0 14px">The collector must be running with CHAOS_ORIGINS including this page's origin. Raw logs never come back to this page.</div>
+<div class="btns" id="cbtn"></div></div></div>
+</div>
+<dialog id="dlg"></dialog>
+<script>
+let T=null,ROLE="viewer",TAB="track";const $=id=>document.getElementById(id);const H=()=>({Authorization:"Bearer "+T});
+const f=(x,d=2)=>x==null?"-":Number(x).toFixed(d);const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ago=t=>{const s=Date.now()/1000-t;return s<90?Math.round(s)+" s":s<5400?Math.round(s/60)+" min":Math.round(s/3600)+" h"};
+async function api(p,o){const r=await fetch(p,Object.assign({headers:H()},o));if(r.status==401){T=null;location.reload()}const j=await r.json().catch(()=>({}));if(!r.ok&&!o)return j.detail?{error:j.detail}:{error:r.status};return j}
+async function mut(m,p,b){const r=await fetch(p,{method:m,headers:{...H(),"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)alert(j.detail||r.status);return r.ok?j:null}
+$("go").onclick=async()=>{const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("u").value,password:$("p").value})});
+ if(!r.ok){$("err").textContent=(await r.json()).detail;return}const j=await r.json();T=j.token;ROLE=j.role;$("who").textContent=j.tenant_id+" · region "+j.region.toUpperCase()+" · "+j.username+" ("+j.role+")";
+ $("tabaudit").style.display=ROLE=="admin"?"":"none";$("login").style.display="none";$("app").style.display="block";tick();setInterval(tick,2000)};
+$("out").onclick=async()=>{await mut("POST","/api/logout");T=null;location.reload()};
+document.querySelectorAll(".tabs button[data-t]").forEach(b=>b.onclick=()=>{TAB=b.dataset.t;document.querySelectorAll(".tabs button[data-t]").forEach(x=>x.classList.toggle("on",x==b));document.querySelectorAll(".sec").forEach(s=>s.classList.toggle("on",s.id=="s-"+TAB));tick()});
+async function tick(){if(!T)return;await track();if(TAB=="inc")await incidents();if(TAB=="rem")await rem();if(TAB=="alerts")await alerts();if(TAB=="fleet")await cols();if(TAB=="audit"&&ROLE=="admin")await audit()}
+async function track(){const [s,r,fl]=await Promise.all([api("/api/tracker"),api("/api/tracker/recent?limit=12"),api("/api/fleet")]);
+ const F=s.funnel,names=[["COLLECTED",F.received],["SENT",F.received],["RECEIVED",F.received],["STORED",F.stored],["EVALUATED",F.evaluated],["PUBLISHED",F.published]];
+ $("flow").innerHTML=names.map((n,i)=>`<div class="stage"><b>${n[1]}</b><span>${n[0]}</span></div>`+(i<5?'<div class="arr">›</div>':"")).join("");
+ $("queue").textContent=s.queue_depth?s.queue_depth+" stored and acknowledged, waiting to be evaluated":"evaluation queue empty";
+ const p=s.target.measured_p95_s;$("p95").textContent=p==null?"-":f(p,1)+" s";$("p95").className="big "+(p==null?"":s.target.met?"ok":"bad");
+ $("tgt").textContent="target ≤ "+s.target.p95_s+" s · "+(p==null?"waiting for data":s.target.met?"met":"missed");$("barfill").style.width=p==null?0:Math.min(100,p/s.target.p95_s*100)+"%";
+ $("stored").textContent=s.stored_total;$("live").textContent=s.live+" live · "+s.replayed+" replayed after outage (last 10 min)";
+ $("dups").textContent=s.duplicates_absorbed;$("rej").textContent=s.rejected+" / "+s.stuck;$("stuck").textContent=s.stuck?"stuck: received but not published":"nothing stuck";
+ $("hops").innerHTML=[["collect → send","collect_to_send"],["network","network"],["process","process"],["total","event_to_published"]].map(([l,k])=>`<tr><td>${l}</td><td>${f(s.hops[k].p50)}</td><td>${f(s.hops[k].p95)}</td><td>${f(s.hops[k].max)}</td></tr>`).join("");
+ const c=s.clock;$("clock").innerHTML=c.estimate_s==null?'<span class="small">clock check: '+esc(c.note)+'</span>':`<span class="${c.warn?"warn":"ok"}">clock: ${esc(c.note)}</span> <span class="small">(offset ${f(c.estimate_s,2)} s, n=${c.samples})</span>`;
+ $("recent").innerHTML=r.map(x=>`<tr class="row" data-id="${x.payload_id}"><td class="mono">${x.payload_id.slice(0,8)}</td><td class="mono">${esc(x.node)}</td><td>${x.category}${x.is_replay?'<span class="tag">replay</span>':""}${x.dup_count?'<span class="tag">dup×'+x.dup_count+'</span>':""}</td><td>${x.severity}</td><td>${x.latency_s==null?"-":f(x.latency_s)+" s"}</td></tr>`).join("");
+ document.querySelectorAll("tr.row").forEach(tr=>tr.onclick=()=>lineage(tr.dataset.id));
+ const off=(fl.collectors||[]).filter(c=>c.offline).length;
+ $("over").innerHTML=fl.overall?`<span class="pill ${fl.overall}">${fl.overall}</span>`+(off?` <span class="pill POOR">${off} COLLECTOR${off>1?"S":""} OFFLINE</span>`:""):"";
+ $("fleet").innerHTML=fl.nodes.map(n=>`<div class="row2"><span class="mono">${esc(n.node)}</span><span><span class="small">${esc((n.reasons||[""])[0])}</span> <span class="pill ${n.state}">${n.state}</span></span></div>`).join("")||'<span class="small">no nodes yet</span>'}
+async function alerts(){const [s,a]=await Promise.all([api("/api/alerts/summary"),api("/api/alerts?limit=40")]);
+ $("nr").textContent=s.noise_reduction_pct==null?"-":s.noise_reduction_pct+"%";$("nrd").textContent=s.alert_worthy_transitions+" alert-worthy changes became "+s.alerts_shown+" alert(s)";
+ $("open").textContent=s.open_now;$("fold").textContent=s.folded_repeats;$("foldd").textContent=s.collector_alerts+" collector alert(s) counted separately";
+ $("alerts").innerHTML=a.map(x=>`<tr><td><span class="pill ${x.severity}">${x.severity}</span></td><td class="mono">${esc(x.node.slice(0,16))}</td><td>${esc(x.title)}${x.kind=="flapping"?'<span class="tag">flapping</span>':""}</td><td>${x.count}</td><td>${ago(x.first_ts)}</td><td>${x.state}${x.ack_by?'<span class="tag">ack '+esc(x.ack_by)+'</span>':""}</td><td>${ROLE=="admin"&&x.state=="open"&&!x.ack_by?`<button class="sm" onclick="ack(${x.id})">Ack</button>`:""}</td></tr>`).join("")||'<tr><td colspan="7" class="small">no alerts</td></tr>'}
+async function ack(id){await mut("PUT","/api/alerts/"+id+"/ack");alerts()}
+async function cols(){const c=await api("/api/collectors");
+ $("cols").innerHTML=c.map(x=>{const h=x.health||{};return `<tr><td class="mono">${esc(x.collector_id)}</td><td>${x.offline?'<span class="pill POOR">OFFLINE</span>':'<span class="pill EXCELLENT">ONLINE</span>'}</td><td>${f(x.silent_s,0)} s ago</td><td>${x.nodes}</td><td>${esc(x.version)} · v${x.schema_version}</td><td>${h.queue_depth??"-"}</td><td>${h.dropped_total??"-"}</td><td>${h.blocked_total??"-"}</td><td>${h.near_miss_total??"-"}</td><td>${h.sampled_out_total??"-"}</td></tr>`}).join("")||'<tr><td colspan="10" class="small">no collectors yet</td></tr>'}
+async function audit(){const [a,v,k,u]=await Promise.all([api("/api/audit?limit=25"),api("/api/audit/verify"),api("/api/keys"),api("/api/users")]);
+ $("chain").innerHTML=v.ok?`<span class="ok">· chain intact (${v.rows} rows)</span>`:`<span class="bad">· CHAIN BROKEN at row ${v.first_bad_id}</span>`;
+ $("aud").innerHTML=a.map(x=>`<tr><td>${ago(x.ts)}</td><td class="mono">${esc(x.actor)}</td><td>${esc(x.action)}</td><td class="small mono">${esc(JSON.stringify(x.detail).slice(0,70))}</td></tr>`).join("");
+ $("keys").innerHTML=k.map(x=>`<div class="row2"><span class="mono">${x.key_id}</span><span><span class="tag">${esc(x.label)}</span> <span class="${x.status=="active"?"ok":x.status=="retiring"?"warn":"bad"}">${x.status}</span> ${x.status!="revoked"&&x.status!="expired"?`<button class="sm danger" onclick="rev('${x.key_id}')">Revoke</button>`:""}</span></div>`).join("");
+ $("users").innerHTML=u.map(x=>`<div class="row2"><span>${esc(x.username)} <span class="tag">${x.role}</span></span><span>${x.disabled?'<span class="bad">disabled</span>':""}</span></div>`).join("")}
+$("rot").onclick=async()=>{if(!confirm("Issue a new collector key? The old key keeps working for the grace period."))return;const r=await mut("POST","/api/keys/rotate");if(r){$("newkey").innerHTML=`<span class="warn">New key (shown once):</span> <span class="mono">${esc(r.key)}</span><br>old keys valid for ${r.grace_s} s`;audit()}};
+async function rev(id){if(confirm("Revoke "+id+" now? Collectors using it stop being accepted immediately.")){await mut("DELETE","/api/keys/"+id);audit()}}
+async function lineage(id){const l=await api("/api/tracker/payload/"+id);const d=$("dlg");
+ d.innerHTML=`<h2>LINEAGE</h2><div class="mono small">${l.payload_id}</div><div class="mono small" style="margin:6px 0 14px">sha256 ${l.sha256.slice(0,32)}…</div><table>`+l.hops.map(h=>`<tr><td>${h.from} → ${h.to}</td><td class="mono">${h.ms} ms</td></tr>`).join("")+`</table><div class="small" style="margin-top:12px">${l.complete?'<span class="ok">All six stages recorded.</span>':'<span class="bad">Incomplete.</span>'} ${l.duplicates_absorbed?l.duplicates_absorbed+" duplicate delivery attempt(s) absorbed.":""}</div><div style="margin-top:14px"><button onclick="this.closest('dialog').close()">Close</button></div>`;d.showModal()}
+$("file").onchange=async e=>{const sent=JSON.parse(await e.target.files[0].text());const r=await api("/api/tracker/reconcile",{method:"POST",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify({sent})});
+ $("rec").innerHTML=`<span class="${r.ok?"ok":"bad"}">${r.ok?"MATCH":"MISMATCH"}</span> · claimed ${r.claimed} · stored ${r.stored} · missing ${r.missing_count} · hash mismatches ${r.hash_mismatch_count} · duplicates stored ${r.duplicates_stored}`};
+// ---- chaos panel: talks to the LOCAL collector; X-Chaos forces a CORS preflight the collector only answers for allowed origins
+const SC=[["Outage 30 s","/api/chaos/scenario/outage?seconds=30"],["End outage","/api/chaos/scenario/clear"],["Duplicate last 3","/api/chaos/scenario/dup"],["Tamper payload","/api/chaos/scenario/corrupt?kind=tamper"],["Extra field","/api/chaos/scenario/corrupt?kind=extra"],["Wrong tenant","/api/chaos/scenario/corrupt?kind=tenant"]];
+const EV=[["Secret leak","secret"],["Brute force","bruteforce"],["Service down","servicedown"],["Out of order","ooo"],["CPU spike","cpu"],["Latency","latency"],["Full incident","incident"]];
+$("cbtn").innerHTML=SC.map(([l],i)=>`<button class="sm ghost" data-i="${i}">${l}</button>`).join("")+`<span style="width:12px"></span>`+EV.map(([l,n])=>`<button class="sm ghost" data-s="${n}">${l}</button>`).join("");
+async function chaos(method,path){const base=$("curl").value.replace(/\/$/,"");try{const r=await fetch(base+path,{method,headers:{"X-Chaos":"1"}});const j=await r.json().catch(()=>({}));$("cmsg").innerHTML=`<span class="${r.ok?"ok":"bad"}">${r.status}</span> ${esc(JSON.stringify(j)).slice(0,220)}`}catch(e){$("cmsg").innerHTML='<span class="bad">cannot reach the collector (is it running? is CHAOS_ORIGINS set to this origin?)</span>'}}
+
+const SC_={POOR:"#ff453a",FAIR:"#ff9f0a",GOOD:"#64d2ff",EXCELLENT:"#30d158"};const RS={low:"EXCELLENT",medium:"FAIR",high:"POOR"};
+const pct=x=>x==null?"-":Math.round(x*100)+"%";const dur=s=>s==null?"-":s<90?Math.round(s)+" s":Math.round(s/60)+" min";
+function chainSvg(ms){const w=150,n=ms.length;let o=`<svg viewBox="0 0 ${Math.max(n*w,300)} 70" style="width:100%;max-width:${n*w}px;height:70px">`;
+ ms.forEach((m,i)=>{const x=i*w+4,c=m.role=="root"?"#ff453a":m.role=="downstream"?"#ff9f0a":"#6e6e73";const t0=ms[0].onset_ts;
+  if(i)o+=`<path d="M${x-30} 30H${x}" stroke="#6e6e73" marker-end="url(#ah)"/><text x="${x-16}" y="20" fill="#6e6e73" font-size="10" text-anchor="middle">+${Math.max(0,m.onset_ts-t0).toFixed(0)}s</text>`;
+  o+=`<rect x="${x}" y="8" width="112" height="46" rx="12" fill="#2c2c2e" stroke="${c}" stroke-width="2"/><text x="${x+56}" y="28" fill="#f5f5f7" font-size="13" font-weight="700" text-anchor="middle">${esc(m.label.slice(0,14))}</text><text x="${x+56}" y="44" fill="${c}" font-size="10" text-anchor="middle">${m.role}${m.recovered?" · recovered":""}</text>`});
+ return o+`<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0L6 3L0 6z" fill="#6e6e73"/></marker></defs></svg>`}
+function sig(s){return s.kind=="anomaly"?`${s.metric} ${s.value} (${s.z>0?"+":""}${s.z}σ vs ${s.baseline})`:esc(s.text||s.metric)}
+async function mw(){const l=await api("/api/maintenance");if(l.error)return;$("m-form").style.display=ROLE=="admin"?"flex":"none";
+ $("m-list").innerHTML=l.slice(0,8).map(x=>`<tr><td>${esc(x.label)}</td><td>${x.status}</td><td class="small">${new Date(x.end_ts*1000).toLocaleTimeString()}</td><td>${esc(x.reason)}</td><td>${esc(x.created_by)}</td><td>${x.suppressed}</td><td>${ROLE=="admin"&&["active","scheduled"].includes(x.status)?`<button class="sm ghost" onclick="mwdel(${x.id})">Cancel</button>`:""}</td></tr>`).join("")||'<tr><td colspan="7" class="small">none</td></tr>'}
+async function whs(){if(ROLE!="admin")return;const r=await api("/api/webhooks");if(r.error||!r.hooks)return;$("wh-card").style.display="block";
+ $("wh").innerHTML=(r.hooks.map(h=>`<div class="row2"><span><b>${esc(h.name)}</b> → ${esc(h.host)} <span class="tag">${h.events.join(", ")}</span>${h.secret_set?"":' <span class="tag">no secret set: sends unsigned</span>'}</span><button class="sm ghost" onclick="mut('POST','/api/webhooks/${encodeURIComponent(h.name)}/test').then(whs)">Send test</button></div>`).join("")||"No webhook configured. Hosts must be listed in allow_hosts; nothing leaves the platform otherwise.")+(r.problems||[]).map(p=>`<div class="bad">${esc(p)}</div>`).join("")+
+  r.log.slice(0,5).map(x=>`<div class="mono">${new Date(x.ts*1000).toLocaleTimeString()} ${esc(x.hook)} ${x.event} ${x.ok?"delivered":"FAILED "+esc(x.error||"")} (${x.attempts} try)</div>`).join("")}
+async function mwadd(){const r=await mut("POST","/api/maintenance",{node:$("m-node").value,minutes:+$("m-min").value,reason:$("m-why").value});if(r){$("m-why").value="";mw()}}
+async function mwdel(id){await mut("DELETE","/api/maintenance/"+id);mw()}
+async function incidents(){mw();whs();const [sm,l,an]=await Promise.all([api("/api/aiops/summary"),api("/api/incidents?limit=30"),api("/api/aiops/anomalies?state=open")]);if(sm.error)return;
+ const i=sm.incidents;$("i-open").textContent=i.open;$("i-sub").textContent=i.resolved+" resolved · "+i.merged+" merged (last hour)";$("i-fold").textContent=i.alerts_linked_to_incident+" → "+(i.open+i.resolved);$("i-fold2").textContent="alerts that became incidents";
+ $("i-lag").textContent=sm.detect_lag_s.median==null?"-":sm.detect_lag_s.median+" s";$("i-mttr").textContent=dur(i.mttr_s);$("i-mttr2").textContent="avg "+(i.avg_nodes_per_incident||"-")+" nodes per incident";
+ const o=sm.slo,ok=(v,t)=>v==null?"":v<=t?"var(--ok,#30d158)":"#ff9f0a",g=(a,b,c,d)=>`<div><div class="small">${a}</div><div style="font-size:22px;font-weight:700;color:${d||"inherit"}">${b}</div><div class="small">${c}</div></div>`;
+ $("i-slo").innerHTML=g("Time to detect (p50 / p95)",o.mttd.p50==null?"-":o.mttd.p50+" / "+o.mttd.p95+" s","target "+o.targets.mttd_s+" s · "+(o.mttd.within_target_pct==null?"-":o.mttd.within_target_pct+"%")+" within · n="+o.mttd.n+(o.mttd.skewed?" (+"+o.mttd.skewed+" skipped: clock skew)":""),ok(o.mttd.p95,o.targets.mttd_s))+g("Time to resolve (p50 / p95)",o.mttr.p50==null?"-":dur(o.mttr.p50)+" / "+dur(o.mttr.p95),"target "+dur(o.targets.mttr_s)+" · "+(o.mttr.within_target_pct==null?"-":o.mttr.within_target_pct+"%")+" within · n="+o.mttr.n,ok(o.mttr.p95,o.targets.mttr_s))+g("Alert noise removed",o.noise.reduction_pct==null?"-":o.noise.reduction_pct+"%",o.noise.alerts+" alerts → "+o.noise.incidents+" incidents · target ≥"+o.targets.noise_reduction_min_pct+"%",o.noise.meets_target==null?"":o.noise.meets_target?"#30d158":"#ff9f0a")+g("Fixes verified improved",sm.remediation.verified_improved+" / "+(sm.remediation.verified_improved+sm.remediation.verified_no_effect+sm.remediation.verified_worse),"observational, not proof of cause");
+ const open=l.filter(x=>x.status=="open").slice(0,4);const det=await Promise.all(open.map(x=>api("/api/incidents/"+x.id)));
+ $("i-list").innerHTML=det.map(d=>{const ex=d.explanation||{};return `<div class="card" style="margin-bottom:16px"><div class="row2"><div><span class="pill ${d.severity}">${d.severity}</span> <b style="font-size:18px;margin-left:8px">${d.ref} · ${esc(d.title)}</b> <span class="tag">${d.kind}</span>${d.ack_by?'<span class="tag">ack '+esc(d.ack_by)+'</span>':""}</div><div class="small">${ago(d.first_ts)} ago · confidence <b>${pct(d.confidence)}</b>${ROLE=="admin"&&!d.ack_by?` <button class="sm ghost" onclick="iack(${d.id})">Ack</button>`:""} <button class="sm ghost" onclick="pm(${d.id})">Post-mortem</button></div></div>
+ <div class="small" style="margin:8px 0 10px;font-size:14px;color:var(--t)">${esc(d.summary)}</div>${chainSvg((ex.chain||[]).map(c=>({...c,recovered:(d.members.find(m=>m.node==c.node)||{}).recovered})))}
+ <div class="grid g2" style="margin-top:12px;gap:24px"><div><h2>WEIGHTED EXPLANATION</h2>${(ex.factors||[]).map(f=>`<div class="row2 small"><span>${f.name} <span class="tag">w ${f.weight}</span> ${esc(f.note)}</span><b>${f.value} → ${f.contribution}</b></div><div class="bar" style="margin:0 0 6px"><i style="width:${f.value*100}%;background:var(--blue)"></i></div>`).join("")}
+ <h2 style="margin-top:12px">EVIDENCE</h2>${d.members.map(m=>`<div class="small"><b>${esc(m.label)}</b> <span class="pill ${m.state}">${m.state}</span> ${m.signals.map(sig).join(" · ")}</div>`).join("")}</div>
+ <div><h2>RECOMMENDED FIXES (SIMULATED, SAFE)</h2>${(d.recommendations||[]).map(r=>`<div style="border-top:1px solid var(--line);padding:6px 0"><div class="row2"><span><b>${esc(r.title)}</b> <span class="tag">${esc(r.label)}</span> <span class="pill ${RS[r.risk]}">${r.risk}</span>${r.reversible?"":' <span class="tag">irreversible</span>'}</span><span>${pct(r.confidence)}${ROLE=="admin"&&!r.advisory?` <button class="sm" onclick="propose(${d.id},'${r.node}','${r.action}')">Propose</button>`:""}</span></div>
+ <div class="small">${r.rationale.map(esc).join(" · ")}${r.predicted?` · twin predicts <span class="pill ${r.predicted.state}">${r.predicted.state}</span>`:""}</div></div>`).join("")||'<div class="small">no automated fix: investigate</div>'}</div></div>
+ <details style="margin-top:10px"><summary class="small">Timeline (${d.timeline.length})</summary>${d.timeline.map(e=>`<div class="small mono">${new Date(e.ts*1000).toLocaleTimeString()} ${e.kind} ${esc(JSON.stringify(e.detail).slice(0,110))}</div>`).join("")}</details></div>`}).join("")||'<div class="card small">No open incidents. Inject one from the Chaos tab (CPU, latency or incident).</div>';
+ $("i-an").innerHTML=an.map(a=>`<tr><td>${esc(a.label)}</td><td>${esc(a.metric_label)}</td><td>${f(a.value,1)}</td><td>${f(a.mean,1)} ± ${f(a.sigma,1)}</td><td class="${Math.abs(a.z)>6?"bad":"warn"}">${f(a.z,1)}σ</td><td>${ago(a.onset_ts)}</td></tr>`).join("")||'<tr><td colspan="6" class="small">none</td></tr>';
+ $("i-fc").innerHTML=sm.forecasts.map(x=>`<div><b>${esc(x.label)}</b> ${x.metric} reaches ${x.limit}% in ~${Math.round(x.eta_s/60)} min (+${x.slope_per_min}/min, r² ${x.r2})</div>`).join("")||"no limit is being approached";
+ $("i-hist").innerHTML=l.filter(x=>x.status!="open").slice(0,6).map(x=>`<tr class="row" onclick="pm(${x.id})"><td>${x.ref}</td><td>${esc(x.title)}</td><td class="small">${x.status} · ${dur(x.duration_s)}</td></tr>`).join("")||'<tr><td class="small">none yet</td></tr>'}
+async function pm(id){const t=await (await fetch('/api/incidents/'+id+'/report',{headers:H()})).text();const d=$('dlg');d.innerHTML='<pre style="white-space:pre-wrap;font-size:13px;max-height:70vh;overflow:auto">'+esc(t)+'</pre><div style="margin-top:14px"><button onclick="navigator.clipboard.writeText(this.closest(\'dialog\').querySelector(\'pre\').textContent)">Copy markdown</button> <button class="ghost" onclick="this.closest(\'dialog\').close()">Close</button></div>';d.showModal()}
+async function iack(id){await mut("PUT","/api/incidents/"+id+"/ack");incidents()}
+async function propose(iid,node,action){const r=await mut("POST","/api/remediation/propose",{incident_id:iid,node,action});if(r){document.querySelector('[data-t=rem]').click()}}
+const AUT=[["off","Off"],["suggest","Suggest only"],["assisted","Assisted (approve all)"],["auto_low","Auto: low-risk"]];
+async function rem(){const [cfg,l,sm]=await Promise.all([api("/api/remediation/config"),api("/api/remediation?limit=40"),api("/api/aiops/summary")]);if(cfg.error)return;
+ $("r-aut").innerHTML=AUT.map(([k,v])=>`<button class="sm ${cfg.autonomy==k?"":"ghost"}" ${ROLE!="admin"?"disabled":""} onclick="setcfg({autonomy:'${k}'})">${v}</button>`).join("");
+ $("r-autx").textContent={off:"Everything refused; pending proposals cancelled.",suggest:"Advice only: nothing can be executed.",assisted:"An admin approves every action (default).",auto_low:"Low-risk, reversible, confident actions on non-protected nodes run alone; the rest still need approval."}[cfg.autonomy];
+ $("r-frz").checked=cfg.change_freeze;$("r-frz").disabled=ROLE!="admin";const r=sm.remediation;
+ $("r-sum").innerHTML=`last hour: <b>${r.total}</b> proposals · pending <b>${r.pending}</b> · verified improved <b>${r.verified_improved}</b> · no effect <b>${r.verified_no_effect}</b> · worse <b>${r.verified_worse}</b> · auto-executed <b>${r.auto_executed}</b>`;
+ $("r-list").innerHTML=l.map(x=>`<tr class="row" onclick="remd(${x.id})"><td class="mono">${x.ref}</td><td>${esc(x.label)}</td><td>${esc(x.title)}${x.proposer!="system"?` <span class="tag">${esc(x.proposer)}</span>`:""}</td><td><span class="pill ${RS[x.risk]}">${x.risk}</span></td><td>${pct(x.confidence)}</td><td>${x.predicted?`<span class="pill ${x.predicted.state}">${x.predicted.state}</span>`:"-"}</td><td>${x.status}${x.status=="pending_approval"?` (${(x.approvals||[]).length}/${x.required_approvals})`:""}${x.verdict&&x.verdict.verdict?` <span class="tag">${x.verdict.verdict}</span>`:""}</td>
+ <td onclick="event.stopPropagation()">${ROLE=="admin"?(x.status=="pending_approval"?`<button class="sm" onclick="ract(${x.id},'approve')">Approve</button> <button class="sm ghost" onclick="ract(${x.id},'reject')">Reject</button>`:["executed","verified","failed_verification"].includes(x.status)&&x.reversible?`<button class="sm danger" onclick="ract(${x.id},'rollback')">Roll back</button>`:""):""}</td></tr>`).join("")||'<tr><td colspan="8" class="small">no proposals yet: they are drafted a few seconds after an incident opens</td></tr>'}
+async function whatif(){const p={};if($("w-aut").value)p.autonomy=$("w-aut").value;if($("w-conf").value!=="")p.min_auto_confidence=+$("w-conf").value;if($("w-bl").value!=="")p.max_blast_auto=+$("w-bl").value;if($("w-frz").checked)p.change_freeze=true;
+ const r=await mut("POST","/api/remediation/policy/simulate",{policy:p});if(!r)return;const L={allow_auto:"runs on its own",needs_approval:"needs approval",advisory:"advice only",deny:"refused"};
+ $("w-out").innerHTML=`<div style="margin-bottom:8px">${r.n} past proposals · <b>${r.changed}</b> would be decided differently</div><table><thead><tr><th>OUTCOME</th><th>TODAY</th><th>DRAFT</th></tr></thead><tbody>${Object.entries(r.tally).map(([k,v])=>`<tr><td>${L[k]}</td><td>${v.current}</td><td><b>${v.draft}</b></td></tr>`).join("")}</tbody></table>
+ ${r.rows.filter(x=>x.changed).slice(0,8).map(x=>`<div style="margin-top:6px"><span class="mono">${x.ref}</span> ${esc(x.title)} on ${esc(x.label)}: ${L[x.current]} → <b>${L[x.draft]}</b>${x.draft_approvals?` (${x.draft_approvals} approval(s))`:""} <span class="small">${x.why.map(esc).join(" · ")}</span></div>`).join("")}<div class="small" style="margin-top:8px">${esc(r.note)}</div>`}
+async function setcfg(b){await mut("PUT","/api/remediation/config",b);rem()}
+$("r-frz").onchange=e=>setcfg({change_freeze:e.target.checked});
+async function ract(id,a){await mut("POST","/api/remediation/"+id+"/"+a,{});rem()}
+async function remd(id){const x=await api("/api/remediation/"+id);const d=$("dlg");d.innerHTML=`<h2>${x.ref} · ${esc(x.title)} on ${esc(x.label)}</h2><div class="small">status <b>${x.status}</b> · proposer ${esc(x.proposer)} · ${x.reversible?"reversible":"NOT reversible"} · blast radius ${x.blast_radius}</div>
+ <h2 style="margin-top:14px">POLICY: ${x.policy.decision.toUpperCase()} (${x.policy.required_approvals} approval(s))</h2>${x.policy.rules.map(r=>`<div class="small"><span class="tag">${r.effect}</span> ${esc(r.text)}</div>`).join("")}
+ ${x.predicted?`<h2 style="margin-top:14px">DIGITAL TWIN (ESTIMATE)</h2><div class="small">predicts <span class="pill ${x.predicted.state}">${x.predicted.state}</span> · cpu ${f(x.predicted.metrics.cpu,0)} mem ${f(x.predicted.metrics.mem,0)} latency ${f(x.predicted.metrics.latency_ms,0)} loss ${f(x.predicted.metrics.packet_loss,1)}${x.predicted.reasons.length?` · still: ${x.predicted.reasons.map(esc).join("; ")}`:""}</div>`:""}
+ ${x.verdict&&x.verdict.verdict?`<h2 style="margin-top:14px">VERIFICATION: ${x.verdict.verdict.toUpperCase()}</h2><div class="small">${esc(x.verdict.note)} (${x.verdict.before.state} → ${x.verdict.after.state})</div>`:""}
+ <h2 style="margin-top:14px">TIMELINE</h2>${x.timeline.map(e=>`<div class="small mono">${new Date(e.ts*1000).toLocaleTimeString()} ${esc(e.actor)} ${e.event} ${esc(JSON.stringify(e.detail).slice(0,100))}</div>`).join("")}
+ <div style="margin-top:14px"><button onclick="this.closest('dialog').close()">Close</button></div>`;d.showModal()}
+$("cbtn").onclick=e=>{const b=e.target.closest("button");if(!b)return;if(b.dataset.s)chaos("POST","/api/chaos/scenario/"+b.dataset.s);else chaos("POST",SC[b.dataset.i][1])};
+$("cst").onclick=()=>chaos("GET","/api/chaos/status");
+$("p").addEventListener("keydown",e=>{if(e.key=="Enter")$("go").click()});
+</script></body></html>
