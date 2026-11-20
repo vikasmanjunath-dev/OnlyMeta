@@ -23,7 +23,7 @@ from contracts.hashing import utc_z
 class Sender:
     def __init__(self, outbox: Outbox, egress: EgressLog, settings, client: Optional[httpx.AsyncClient] = None):
         self.outbox, self.egress, self.s = outbox, egress, settings
-        self.client = client or httpx.AsyncClient(timeout=5.0)
+        self.client = client or httpx.AsyncClient(timeout=5.0, verify=(getattr(settings, "ca_bundle", "") or True))
         self.mode = "ONLINE"
         self.chaos_until = 0.0              # simulated network cut (monotonic seconds)
         self.last_error: Optional[str] = None
