@@ -1,0 +1,32 @@
+# UNTESTED in the authoring sandbox. Secrets come from .env (copy .env.example); nothing secret is baked into the image.
+# Ports are bound to 127.0.0.1: the collector UI shows raw data and must never be reachable from outside this machine.
+services:
+  saas:
+    build: .
+    command: ["python3", "-m", "saas.main", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      SAAS_DATA: /app/data
+      KEY_ALPHA: ${KEY_ALPHA:?set KEY_ALPHA in .env}
+      KEY_BETA: ${KEY_BETA:?set KEY_BETA in .env}
+      USER_ALPHA_PASSWORD: ${USER_ALPHA_PASSWORD:?set in .env}
+      USER_BETA_PASSWORD: ${USER_BETA_PASSWORD:?set in .env}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      CORS_ORIGINS: http://127.0.0.1:8001
+    volumes: ["saas-data:/app/data"]
+    ports: ["127.0.0.1:8000:8000"]
+    restart: unless-stopped
+  collector:
+    build: .
+    command: ["python3", "-m", "collector.main", "--host", "0.0.0.0", "--port", "8001"]
+    depends_on: [saas]
+    environment:
+      TENANT: tenant-alpha
+      SAAS_URL: http://saas:8000/ingest
+      KEY_ALPHA: ${KEY_ALPHA:?set KEY_ALPHA in .env}
+      PSEUDO_KEY: ${PSEUDO_KEY:?set PSEUDO_KEY in .env}
+      COLLECTOR_DB: /app/data/collector_alpha.db
+      CHAOS_ORIGINS: http://127.0.0.1:8000
+    volumes: ["collector-data:/app/data"]
+    ports: ["127.0.0.1:8001:8001"]
+    restart: unless-stopped
+volumes: {saas-data: {}, collector-data: {}}
