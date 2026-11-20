@@ -1,8 +1,9 @@
 # Remediation policy: what the platform may propose, what needs a human, what is refused. Reviewed like code.
-# Safe by default: autonomy "assisted" = every action needs an admin's approval; nothing is ever applied to a real system
-# (the only actuator is the simulator). A tenant admin can lower autonomy at any time (kill switch) via PUT /api/remediation/config.
+# Safe by default: autonomy "assisted" = every action needs an admin's approval, and the actuator is the simulator: nothing touches a real
+# system unless the tenant admin sets actuator=collector AND the customer's own collector has its actuator switched on (two keys). A tenant admin can lower autonomy at any time (kill switch) via PUT /api/remediation/config.
 defaults:
   autonomy: assisted            # off (refuse all) | suggest (advice only) | assisted (human approves every action) | auto_low (low-risk, reversible, high-confidence run alone)
+  actuator: simulation          # simulation (nothing real) | collector (a signed command the customer's collector may execute inside its own boundary)
   auto_propose: true            # the platform drafts a proposal when an incident opens (a draft is not an action)
   approval_ttl_s: 900           # a pending proposal expires: a stale approval must not fire on changed conditions
   verify_after_s: 45            # after executing, wait this long, then compare health before/after

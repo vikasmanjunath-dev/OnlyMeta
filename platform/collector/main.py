@@ -18,6 +18,7 @@ from collector.pipeline import Pipeline
 from collector.redact import find_secrets
 from collector import scenarios
 from collector.remote_config import ConfigPoller
+from collector.actuator import CommandRunner
 from collector.sender import Sender
 
 UI = Path(__file__).parent / "ui" / "index.html"
@@ -31,19 +32,20 @@ def create_app(settings=None) -> FastAPI:
     pipe = Pipeline(s)
     sender = Sender(pipe.outbox, pipe.egress, s)
     poller = ConfigPoller(pipe, sender.client)
+    runner = CommandRunner(pipe, sender.client)
     stop = asyncio.Event()
 
     @asynccontextmanager
     async def lifespan(app):
         tasks = [asyncio.create_task(pipe.run_stream(stop)), asyncio.create_task(pipe.run_flusher(stop)),
-                 asyncio.create_task(sender.run(stop)), asyncio.create_task(poller.run(stop))]
+                 asyncio.create_task(sender.run(stop)), asyncio.create_task(poller.run(stop)), asyncio.create_task(runner.run(stop))]
         yield
         stop.set()
         await asyncio.gather(*tasks, return_exceptions=True)
         await sender.client.aclose()
 
     app = FastAPI(title=f"Collector {s.collector_id}", lifespan=lifespan)
-    app.state.pipe, app.state.sender, app.state.settings, app.state.poller = pipe, sender, s, poller
+    app.state.pipe, app.state.sender, app.state.settings, app.state.poller, app.state.runner = pipe, sender, s, poller, runner
 
     @app.middleware("http")
     async def chaos_guard(request: Request, call_next):
@@ -121,6 +123,17 @@ def create_app(settings=None) -> FastAPI:
     @app.post("/api/chaos/scenario/{name}")
     async def scenario(name: str, n: int = 15, seconds: float = 30, kind: str = "tamper", ticks: int = 3):
         """One-click scenarios for the demo; each returns what the system did, so the panel can show proof."""
+        if name == "fault":                                    # sustained CPU saturation on app-01: lasts until an action (or the 20 min cap) ends it
+            live = next((x for x in pipe.sources if hasattr(x, "fault")), None)
+            if not live:
+                raise HTTPException(409, "this scenario needs the calm live source (SOURCES=calm)")
+            live.fault("app-01", scenarios.FAULT)
+            return {"scenario": name, "mode": "live", "node": "app-01", "sustained": True, "evidence": []}
+        if name == "clearfault":
+            live = next((x for x in pipe.sources if hasattr(x, "faults")), None)
+            if live:
+                live.faults.clear()
+            return {"scenario": name}
         if name == "drift":                                    # live: the running calm feed itself drifts, so the samples arrive in order, one per window
             live = next((x for x in pipe.sources if hasattr(x, "inject")), None)
             if live:
@@ -150,6 +163,10 @@ def create_app(settings=None) -> FastAPI:
         if name == "corrupt":
             return {"scenario": name, "kind": kind, "saas_response": await sender.send_corrupt(kind)}
         raise HTTPException(404, f"unknown scenario {name!r}")
+
+    @app.get("/api/actuator")
+    def actuator_state():
+        return runner.state()
 
     @app.get("/api/chaos/ledger")
     def ledger(limit: int = 2000):

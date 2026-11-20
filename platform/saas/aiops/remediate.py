@@ -89,7 +89,7 @@ class SimulatedActuator:
     def __init__(self):
         self.n = 0
 
-    def apply(self, tenant: str, label: str, action: str, params: dict, now: float) -> dict:
+    def apply(self, tenant: str, label: str, action: str, params: dict, now: float, **_) -> dict:
         self.n += 1
         return {"ok": True, "actuator": self.name, "ref": f"sim-{self.n}", "applied": {"action": action, "target": label, "params": params},
                 "note": "simulated: no real system was changed"}
@@ -105,7 +105,7 @@ def effective_policy(doc: dict, tenant: str, override: Optional[dict]) -> dict:
     return p
 
 
-EDITABLE = {"autonomy": {"off", "suggest", "assisted", "auto_low"}, "auto_propose": bool, "change_freeze": bool, "auto_rollback_on_worse": bool}
+EDITABLE = {"actuator": {"simulation", "collector"}, "autonomy": {"off", "suggest", "assisted", "auto_low"}, "auto_propose": bool, "change_freeze": bool, "auto_rollback_on_worse": bool}
 ORDER = {"deny": 3, "advisory": 2, "approval": 1, "allow": 0}
 
 
@@ -151,6 +151,8 @@ def decide(pol: dict, req: dict) -> dict:
         r("risk_high", "approval", "high-risk action: two approvals")
     if req["confidence"] < pol["min_auto_confidence"]:
         r("low_confidence", "approval", f"confidence {req['confidence']:.2f} < {pol['min_auto_confidence']}")
+    if req.get("real"):
+        r("real_actuator", "approval", "this tenant executes for real (actuator=collector): a person always approves")
     if pol["autonomy"] == "assisted":
         r("assisted_mode", "approval", "assisted mode: an admin approves every action")
     if not any(x["effect"] != "allow" for x in rules):
@@ -170,6 +172,20 @@ class Remediator:
         self.det, self.incidents, self.offline_s = detector, incidents, offline_s
         self.actuator = actuator or SimulatedActuator()
         self.counters = {"proposed": 0, "executed": 0, "auto_executed": 0, "denied": 0, "rolled_back": 0, "expired": 0}
+
+    def is_real(self, tenant: str) -> bool:
+        return bool(getattr(self.actuator, "real", lambda t: False)(tenant))
+
+    def on_command_result(self, tenant: str, cmd: dict, now: float):
+        """The collector reported back: put it on the action's timeline; a refused or failed execution aborts the action (it did not happen)."""
+        rid, res = cmd["remediation_id"], json.loads(cmd["result"] or "{}")
+        r = self.get(tenant, rid) if rid else None
+        if not r:
+            return
+        self._log(tenant, rid, "collector", "actuated", {"command": cmd["id"], "status": cmd["status"], "action": cmd["action"], "detail": res.get("reason") or res.get("applied") or res}, now, None, r["incident_id"])
+        if cmd["status"] != "applied" and r["status"] == "executed":
+            self._set(tenant, rid, "aborted", "system", "aborted", {"reason": f"the collector did not execute it ({cmd['status']}): {res.get('reason', 'no reason given')}"}, now, None, r["incident_id"])
+        self._publish(tenant, rid)
 
     # ---------------------------------------------------------------- config
     def config(self, tenant: str) -> dict:
@@ -213,7 +229,7 @@ class Remediator:
         for r in rows:
             req = {"action": r["action"], "label": g.name(r["node"]), "blast": r["blast_radius"] or 0, "confidence": r["confidence"] or 0.0, "severity": "high",
                    "risk": r["risk"], "reversible": bool(r["reversible"]), "advisory": bool(ACTIONS.get(r["action"], {}).get("advisory")), "telemetry_age_s": 0.0,
-                   "actions_last_hour": 0, "cooldown_hit": False, "duplicate": False, "offline_s": self.offline_s}
+                   "actions_last_hour": 0, "cooldown_hit": False, "duplicate": False, "offline_s": self.offline_s, "real": self.is_real(tenant)}
             a, b = decide(cur, req), decide(new, req)
             tally[a["decision"]][0] += 1
             tally[b["decision"]][1] += 1
@@ -287,7 +303,7 @@ class Remediator:
         blast = len(g.dependents(node)) if spec["disruptive"] else 0
         req = {"action": action, "label": g.name(node), "blast": blast, "confidence": confidence, "severity": severity, "risk": spec["risk"],
                "reversible": spec["reversible"], "advisory": bool(spec.get("advisory")), "telemetry_age_s": max(0.0, now - ns["last_seen_ts"]),
-               "actions_last_hour": n_hour, "cooldown_hit": bool(last and now - last["executed_ts"] < pol["cooldown_s"]), "duplicate": False, "offline_s": self.offline_s}
+               "actions_last_hour": n_hour, "cooldown_hit": bool(last and now - last["executed_ts"] < pol["cooldown_s"]), "duplicate": False, "offline_s": self.offline_s, "real": self.is_real(tenant)}
         pdec = decide(pol, req)
         if pdec["decision"] == "deny" and not human:
             self.counters["denied"] += 1
@@ -375,7 +391,7 @@ class Remediator:
         if why:
             self._set(tenant, rid, "aborted", "system", "aborted", {"reason": why}, now, ip, r["incident_id"])
             return self.get(tenant, rid)
-        res = self.actuator.apply(tenant, g.name(r["node"]), r["action"], r["params"], now)
+        res = self.actuator.apply(tenant, g.name(r["node"]), r["action"], r["params"], now, rid=rid)
         before = {"state": ns["state"], "metrics": json.loads(ns["metrics"] or "{}"), "ts": now, "event_ts": ns["last_event_ts"]}
         verdict = {"before": before, "actuator": res}
         with self.store_of(tenant).tx() as c:
@@ -400,7 +416,10 @@ class Remediator:
                  "stale": bool(ns and now - ns["last_seen_ts"] > self.offline_s)}
         metric = (r["precondition"] or {}).get("metric")
         verdict, note, frac = "no_effect", "no meaningful change in the node's health", None
-        if after["stale"] or not ns:
+        cmd = self.actuator.status(tenant, r["verdict"]["actuator"].get("ref")) if hasattr(self.actuator, "status") else None
+        if cmd and cmd["status"] != "applied":
+            verdict, note = "no_effect", f"the collector never confirmed executing the command (status: {cmd['status']}): nothing to verify"
+        elif after["stale"] or not ns:
             verdict, note = "no_effect", "no fresh telemetry after the action: cannot confirm"
         else:
             rb, ra = RANK[before["state"]], RANK[after["state"]]
@@ -431,7 +450,7 @@ class Remediator:
             raise RemediationError(409, f"cannot roll back: status is {r['status']}")
         if not spec["reversible"] or not spec["rollback"]:
             raise RemediationError(409, "this action is not reversible (that is why it needed approval); no rollback exists")
-        res = self.actuator.apply(tenant, self.graph_of(tenant).name(r["node"]), spec["rollback"], r["params"], now)
+        res = self.actuator.apply(tenant, self.graph_of(tenant).name(r["node"]), spec["rollback"], r["params"], now, rid=rid)
         with self.store_of(tenant).tx() as c:
             c.execute("UPDATE remediations SET status='rolled_back', rolled_back_ts=? WHERE id=? AND tenant_id=?", (now, rid, tenant))
         self.counters["rolled_back"] += 1

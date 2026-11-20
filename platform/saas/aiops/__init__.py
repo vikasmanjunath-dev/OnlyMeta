@@ -11,6 +11,7 @@ from saas.aiops.baseline import METRICS, Detector, Trend, describe, signal_weigh
 from saas.aiops.correlate import COLLECTOR_PREFIX, SECURITY_PREFIX, Graph
 from saas.aiops import learn as learner
 from saas.aiops.ask import Ask
+from saas.aiops.actuate import ActuatorRouter, CommandActuator
 from saas.aiops.multivar import JointDetector, describe_joint
 from saas.aiops.incidents import IncidentManager
 from saas.aiops.maintenance import Maintenance
@@ -43,6 +44,9 @@ class AIOps:
         self.inc.on_resolve.append(lambda t, i: self.webhooks.emit(t, "incident_resolved", {"incident": self._wh(t, i)}))
         self.rem = Remediator(self.th, load_policy(ROOT / "contracts/remediation_policy.yaml"), bus, audit, engine.store_of, self.graph, self.det, self.inc,
                               settings.offline_s, list(settings.tenants))
+        self.cmd = CommandActuator(engine.store_of, audit, list(settings.tenants))
+        self.cmd.on_result = self.rem.on_command_result
+        self.rem.actuator = ActuatorRouter(self.rem.actuator, self.cmd, lambda t: self.rem.config(t).get("actuator", "simulation"))
         self._drafted: dict = {}
         engine.analysers.append(self.analyse)
         engine.hooks["evaluated"].append(self.on_evaluated)

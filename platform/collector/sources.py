@@ -147,6 +147,25 @@ class CalmSource:
     def __init__(self, interval_s: float = 5.0, nodes=("app-01", "db-01", "net-01")):
         self.interval_s, self.nodes, self.malformed, self.read = interval_s, nodes, 0, 0
         self.drift: dict = {}                                         # node -> [ticks left, overrides]
+        self.faults: dict = {}                                        # node -> {ov, left, cut}: a sustained fault that only an action (or its timeout) ends
+
+    def fault(self, node: str, overrides: dict, ticks: int = 240):
+        self.faults[node] = {"ov": dict(overrides), "left": max(int(ticks), 1), "cut": 0.0}
+
+    def mitigate(self, node: str, cut: float) -> bool:
+        """What a real fix does to the synthetic system: remove `cut` (0..1) of the fault's excess over normal. 0 = the fault is back in full."""
+        f = self.faults.get(node)
+        if not f:
+            return False
+        f["cut"] = min(max(float(cut), 0.0), 1.0)
+        return True
+
+    def _fault_values(self, node: str):
+        from collector.scenarios import CALM
+        f = self.faults.get(node)
+        if not f or f["left"] <= 0:
+            return None
+        return {k: round(CALM.get(k, v) + (v - CALM.get(k, v)) * (1 - f["cut"]), 1) for k, v in f["ov"].items()}
 
     def inject(self, node: str, ticks: int, overrides: dict):
         """Make `node` report `overrides` for the next `ticks` ticks of THIS feed (in order, in the same window: no mixing with calm samples)."""
@@ -161,9 +180,11 @@ class CalmSource:
             for n in self.nodes:
                 self.read += 1
                 d = self.drift.get(n)
-                yield normalise(ev(n, ts=ts, **(d[1] if d and d[0] > 0 else {})))
+                yield normalise(ev(n, ts=ts, **(self._fault_values(n) or (d[1] if d and d[0] > 0 else {}))))
             for d in self.drift.values():
                 d[0] -= 1
+            for f in self.faults.values():
+                f["left"] -= 1
             k += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self.interval_s)

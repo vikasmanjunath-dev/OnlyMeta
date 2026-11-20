@@ -38,6 +38,9 @@ class Settings:
     sources: tuple = ("file",)       # file | tail:PATH | syslog:HOST:PORT  (comma separated in SOURCES)
     outbox_max_rows: int = 20000
     stable_every: int = 1            # adaptive sampling (1 = off)
+    actuator: str = "off"             # off | calm (acts on the synthetic demo source) | runbook (runs allow-listed local scripts); the customer's switch
+    runbooks: str = ""               # YAML: action -> {argv: [...], timeout_s: n}; only these can ever run
+    command_poll_s: float = 3.0
 
 
 def load_settings(**over) -> Settings:
@@ -60,6 +63,7 @@ def load_settings(**over) -> Settings:
         login_window_s=th["failed_login_window_s"], burst_threshold=th["failed_logins_poor"],
         fair_logins=th["failed_logins_fair"], node_silent_s=th.get("node_silent_s", 15),
         outbox_max_rows=th.get("outbox_max_rows", 20000), stable_every=th.get("stable_every", 1),
+        actuator=os.getenv("ACTUATOR", "off"), runbooks=os.getenv("RUNBOOKS", ""),
         sources=tuple(x.strip() for x in os.getenv("SOURCES", "file").split(",") if x.strip()),
     )
     for k, v in over.items():

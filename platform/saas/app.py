@@ -210,6 +210,34 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
             raise HTTPException(404, "no config")
         return {**jl(row["doc"]), "config_version": row["version"]}
 
+    @app.get("/collector/commands")
+    async def collector_commands(request: Request, caps: str = ""):
+        """The collector polls for work, declaring what it can execute. Commands come back signed for THIS key, at most once."""
+        tenant, kid, _ = await collector(request)
+        found, now = keys.resolve(kid), time.time()
+        ai.cmd.seen(tenant, [c for c in caps.split(",") if c], now)
+        return {"commands": ai.cmd.deliver(tenant, kid, found[1], now) if found else []}
+
+    @app.post("/collector/commands/{cid}/result")
+    async def collector_command_result(cid: int, request: Request):
+        tenant, _, body = await collector(request)
+        try:
+            doc = json.loads(body)
+            status, detail = doc["status"], doc.get("detail") or {}
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(400, 'expected {"status": "applied|refused|failed", "detail": {...}}')
+        try:
+            ai.cmd.result(tenant, cid, status, detail if isinstance(detail, dict) else {"detail": str(detail)[:300]}, time.time())
+        except RemediationError as e:
+            raise HTTPException(e.status, e.message)
+        return {"ok": True}
+
+    @app.get("/api/actuator")
+    def actuator_state(u: dict = Depends(user)):
+        """Who can act for real: the tenant's chosen actuator, the collector's declared capabilities and recent commands."""
+        now = time.time()
+        return {"mode": ai.rem.config(u["tenant"]).get("actuator", "simulation"), **ai.cmd.status_of(u["tenant"], now), "commands": ai.cmd.list(u["tenant"], 20)}
+
     @app.get("/api/ids")
     async def ids(request: Request, authorization: str = Header(default="")):
         """Delivery reconciliation: a signing collector or a signed-in user lists ITS OWN tenant's stored ids + hashes."""

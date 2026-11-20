@@ -30,3 +30,21 @@ def sign(secret: str, method: str, path: str, body: bytes = b"", ts: Optional[in
 def verify(secret: str, method: str, path: str, body: bytes, ts: str, nonce: str, sig: str) -> bool:
     good = hmac.new(secret.encode(), canonical(method, path, ts, nonce, body), hashlib.sha256).hexdigest()
     return hmac.compare_digest(good, sig or "")
+
+
+def command_canonical(cid: int, tenant: str, kid: str, action: str, target: str, params: dict, exp: int) -> bytes:
+    """What a remediation command signature covers: id, tenant, the key it was issued to, the action, the target label, params and expiry."""
+    import json
+    return f"cicada-cmd-v1|{cid}|{tenant}|{kid}|{action}|{target}|{json.dumps(params, sort_keys=True, separators=(',', ':'))}|{int(exp)}".encode()
+
+
+def command_sign(secret: str, cid: int, tenant: str, kid: str, action: str, target: str, params: dict, exp: int) -> str:
+    return hmac.new(secret.encode(), command_canonical(cid, tenant, kid, action, target, params, exp), hashlib.sha256).hexdigest()
+
+
+def command_verify(secret: str, cmd: dict) -> bool:
+    try:
+        good = command_sign(secret, int(cmd["id"]), cmd["tenant"], cmd["kid"], cmd["action"], cmd["target"], cmd["params"], int(cmd["exp"]))
+    except (KeyError, TypeError, ValueError):
+        return False
+    return hmac.compare_digest(good, str(cmd.get("sig", "")))

@@ -14,6 +14,8 @@ def ev(node, ts=None, **kw):
     return base
 
 
+CALM = dict(cpu_percent=40.0, mem_percent=55.0, latency_ms=30.0, packet_loss_pct=0.1, bandwidth_mbps=120.0)
+FAULT = dict(cpu_percent=96.0, latency_ms=160.0)       # sustained CPU saturation on app-01 until something is actually done about it
 DRIFT = dict(cpu_percent=42.0, mem_percent=62.2, latency_ms=43.0, packet_loss_pct=0.62, bandwidth_mbps=146.0)
 
 
