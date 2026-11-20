@@ -67,7 +67,7 @@ class Stack:
     def start_collector(self, short):
         port = self.ports[short]
         self._spawn(f"collector-{short}", ["-m", "collector.main", "--port", str(port)],
-                    {"TENANT": f"tenant-{short}", "SAAS_URL": f"http://127.0.0.1:{self.saas_port}/ingest", "SPEED": self.speed, "SOURCES": self.source,
+                    {"TENANT": f"tenant-{short}", "SAAS_URL": f"http://127.0.0.1:{self.saas_port}/ingest", "SPEED": self.speed, "SOURCES": self.source, "ACTUATOR": "calm" if (short == "alpha" and self.source == "calm") else "off",
                      "CHAOS_ORIGINS": f"http://127.0.0.1:{self.saas_port},http://localhost:{self.saas_port}",
                      "COLLECTOR_DB": str(self.data / f"collector_{short}.db")})
         wait(lambda: http("GET", f"http://127.0.0.1:{port}/api/status"), f"collector {short}")
@@ -237,7 +237,7 @@ def drill():
         print("[2c] P4: Proof Board evidence")
         sb, pa = f"http://127.0.0.1:{st.saas_port}", f"http://127.0.0.1:{st.ports['alpha']}"
         page = urllib.request.urlopen(f"{sb}/demo", timeout=10).read().decode()
-        check("/demo serves the Proof Board (7 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated", "Dependencies are learned", "Many small deviations", "Ask the platform")) and "tenant-alpha" not in page)
+        check("/demo serves the Proof Board (8 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated", "Dependencies are learned", "Many small deviations", "Ask the platform", "only with two keys")) and "tenant-alpha" not in page)
         cx = {"X-Chaos": "1", "Origin": sb}
         ev = http("POST", f"{pa}/api/chaos/scenario/secret", None, headers=cx)
         check("secret scenario returns outbound evidence with 0 credentials", ev["evidence"] and all(e["secrets_in_outbound"] == 0 for e in ev["evidence"]) and not any(x.decode() in json.dumps(ev) for x in FAKE_SECRETS), f"{len(ev['evidence'])} payloads")
@@ -282,6 +282,22 @@ def drill():
         check("ask: an unanswerable question gets no facts and no citations", a2["intent"] == "unsupported" and not a2["cites"] and not a2["facts"])
         ab = ask(st.login("beta", "admin"), "Why did db-01 fail?")
         check("ask: beta cannot reach alpha's nodes or incidents through questions", ab["intent"] == "unknown_node" and not ab["cites"])
+
+        print("[2f] P8: real actuation needs two keys")
+        act = http("GET", f"{sb}/api/actuator", None, ta)
+        check("actuator: default is the simulator, and this collector (actuator off) offers nothing", act["mode"] == "simulation" and act["capabilities"] == [] and act["commands"] == [], f"online={act['online']}")
+        try:
+            urllib.request.urlopen(f"{sb}/collector/commands", timeout=5)
+            unsigned = 200
+        except urllib.error.HTTPError as e:
+            unsigned = e.code
+        check("actuator: an unsigned request cannot fetch commands", unsigned == 401, str(unsigned))
+        try:
+            http("PUT", f"{sb}/api/remediation/config", {"actuator": "shell"}, ta)
+            bad = 200
+        except Exception as e:  # noqa: BLE001
+            bad = 422 if "422" in str(e) else str(e)[:60]
+        check("actuator: only 'simulation' or 'collector' are accepted values", bad == 422, str(bad))
 
         print("[3] crash recovery (kill -9)")
         before = st.status("alpha")["sent"]
@@ -373,7 +389,7 @@ def preflight(fix=False, saas="http://127.0.0.1:8000", alpha="http://127.0.0.1:8
 
 
 def boardcheck():
-    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all seven proofs."""
+    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all eight proofs."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -398,7 +414,7 @@ def boardcheck():
             pg.click("#all")
             pg.wait_for_function("document.querySelector('#all').disabled===false", timeout=300000)
             pg.wait_for_timeout(500)
-            verdicts = pg.evaluate("[1,2,3,4,5,6,7].map(n=>document.querySelector('#p'+n+' .v').textContent)")
+            verdicts = pg.evaluate("[1,2,3,4,5,6,7,8].map(n=>document.querySelector('#p'+n+' .v').textContent)")
             bad = pg.evaluate("[...document.querySelectorAll('.steps li.bad')].map(l=>l.textContent)")
             pg.screenshot(path=str(tmp / "board.png"), full_page=True)
             b.close()

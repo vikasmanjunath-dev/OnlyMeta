@@ -28,7 +28,7 @@ details{margin-top:8px;color:var(--g);font-size:13px}summary{cursor:pointer;colo
 
 <div id="board" hidden>
 <div class="top"><h1>Proof Board</h1><span class="sub" id="who"></span><span class="sp"></span><span class="small mono" id="clock">0:00</span>
-<span id="sum" class="mono">0/7</span><button id="all" title="R">Run all proofs <kbd>R</kbd></button><button id="rst" class="sec">Reset</button></div>
+<span id="sum" class="mono">0/8</span><button id="all" title="R">Run all proofs <kbd>R</kbd></button><button id="rst" class="sec">Reset</button></div>
 <div id="trust"></div>
 <div class="grid" id="cards"></div>
 <div class="small" style="margin-top:14px">Synthetic data: the healthy feed and every fault are generated locally and labelled as such. Remediation is a simulation; nothing real is touched. Keys <kbd>1</kbd>–<kbd>7</kbd> run a single proof.</div>
@@ -49,6 +49,7 @@ const DEFS=[
  ,{id:5,t:"Dependencies are learned from telemetry, and a human approves them",say:"Nobody tells the platform how the nodes depend on each other. It looks at which node deviates first, failure after failure, and tests whether that order could be chance. We inject six cascades with the declared map out of the loop: it rediscovers app depends on db depends on net, with the evidence for each edge. A suggestion changes nothing until an admin accepts it.",fb:"If an edge is missing, press 5 again (the SaaS needs the history delivered first). Nodes that start at the same moment are listed as undirected: the platform will not guess an order."}
  ,{id:6,t:"Many small deviations, one alert: nothing crosses a single-metric limit",say:"Memory, latency, packet loss and bandwidth each drift about 2.6 standard deviations. No single-metric threshold fires, and no per-metric z-score alert would. The multivariate detector scores the whole vector against the node's own mean and covariance (Mahalanobis distance) and the limit is a probability, 0.1 % per sample, not a guess. It opens one anomaly that says which metrics moved together.",fb:"If nothing opens: detectors need 40 clean samples (the board primes them). If a single-metric anomaly opened instead, the drift was too strong for this feed: press Reset and run again."}
  ,{id:7,t:"Ask the platform in plain English; every answer cites its records",say:"No language model: the question is parsed by rules and the answer is a template filled from this tenant's own incident data, so it is instant, offline, deterministic and cannot invent a fact. We ask what is wrong, why, what to do, then something it cannot know. Each answer is checked here against the incident API, and the other tenant gets nothing of ours.",fb:"If there is no incident to ask about, the proof injects one (about 15 s). A question it cannot parse gets a list of what it can answer, never a guess."}
+ ,{id:8,t:"A real action, only with two keys, and the telemetry confirms it",say:"Until now remediation was a simulation. Here the SaaS queues a signed command; the customer's own collector re-verifies it and acts only because its owner switched the actuator on. A fault that does not clear by itself is injected on app-01, an admin approves the proposed fix, the collector scales it out, and the verdict comes from the node's own telemetry afterwards, not from a model. The other tenant's collector has its actuator off, so it offers nothing.",fb:"Takes about 90 s (verification waits 45 s on purpose). If it fails early, check that the alpha collector was started with ACTUATOR=calm (demo.py up does). The proof puts the tenant back on the simulator when it ends."}
 ];
 $("cards").innerHTML=DEFS.map(d=>`<div class="card" id="p${d.id}"><div class="head"><span class="num">${d.id}</span><h3>${d.t}</h3><span class="sp"></span><span class="pill idle v">READY</span><button class="b" data-n="${d.id}">Run</button></div>
 <ol class="steps"></ol><div class="ev"></div><details><summary>Say this · if it fails</summary><p>${esc(d.say)}</p><p class="warn">${esc(d.fb)}</p></details></div>`).join("");
@@ -184,15 +185,41 @@ async function p7(c){
  c.ev(`<table>${rows.map(([ok,t])=>`<tr><td style="width:22px" class="${ok?"ok":"bad"}">${ok?"✓":"✗"}</td><td class="small">${esc(t)}</td></tr>`).join("")}</table><div class="small" style="margin-top:6px">Rules, not a model: instant, offline, deterministic. Try it live in the Tracker, Incidents tab.</div>`);
  return rows.every(r=>r[0])}
 
-const PROOF={1:p1,2:p2,3:p3,4:p4,5:p5,6:p6,7:p7},BUSY={},RESULT={};
+async function p8(c){
+ const put=m=>saas(S.a,"/api/remediation/config","PUT",{actuator:m});let id=null;
+ try{
+ let s=c.step("Each collector declares what it can do; the customer's switch decides");const a0=(await saas(S.a,"/api/actuator")).j,b0=(await saas(S.b,"/api/actuator")).j;
+ const okC=a0&&a0.online&&a0.capabilities.includes("scale_out")&&b0&&b0.online&&b0.capabilities.length===0&&a0.mode==="simulation";
+ okC?s.ok(`alpha offers ${a0.capabilities.length} actions · beta offers none (actuator off) · both tenants still on the simulator`):s.fail(JSON.stringify([a0&&a0.capabilities,b0&&b0.capabilities,a0&&a0.mode]));if(!okC)return false;
+ s=c.step("Wait for a calm fleet");let calm=false;for(let i=0;i<45&&!calm;i++){const l=(await saas(S.a,"/api/incidents?limit=20")).j||[];calm=!l.some(x=>x.status==="open");if(!calm)await sleep(1000)}calm?s.ok("calm"):s.fail("an earlier incident is still open");
+ s=c.step("Tenant admin chooses the real actuator (the other key)");let r=await put("collector");r.ok&&r.j.actuator==="collector"?s.ok("actuator = collector · every action still needs a human"):s.fail(r.status);
+ const t0=Date.now()/1000;s=c.step("Inject a sustained CPU fault on app-01 (it only ends when something is done)");await col(S.a,"/api/chaos/scenario/fault","POST");s.ok("fault active");
+ s=c.step("Wait for the incident and the proposed fix");let rem=null;
+ for(let i=0;i<60&&!rem;i++){await sleep(1000);const l=(await saas(S.a,"/api/remediation?status=pending_approval&limit=20")).j||[];rem=l.find(x=>x.label==="app-01"&&x.action==="scale_out")||null}
+ if(!rem){s.fail("no scale-out proposal for app-01");return false}id=rem.id;s.ok(`REM-${rem.id}: ${rem.action} on ${rem.label} · policy: ${rem.policy.decision}`);
+ s=c.step("Admin approves; the SaaS queues a signed command");const ap=await saas(S.a,"/api/remediation/"+id+"/approve","POST",{note:"proof 8"});
+ const ref=ap.j&&ap.j.verdict&&ap.j.verdict.actuator&&ap.j.verdict.actuator.ref;ap.ok&&ap.j.status==="executed"&&/^cmd-/.test(ref)&&ap.j.verdict.actuator.actuator==="collector"?s.ok(`${ref} queued · status executed`):s.fail(ap.status+" "+JSON.stringify(ap.j).slice(0,120));if(!ref)return false;
+ s=c.step("The collector verifies, executes and reports back");let cm=null;
+ for(let i=0;i<20&&!(cm&&cm.status!=="queued"&&cm.status!=="sent");i++){await sleep(1000);cm=((await saas(S.a,"/api/actuator")).j.commands||[]).find(x=>"cmd-"+x.id===ref)||null}
+ cm&&cm.status==="applied"?s.ok(`${cm.action} on ${cm.label} · ${cm.result&&cm.result.applied}`):s.fail(cm?cm.status+" "+JSON.stringify(cm.result):"not delivered");if(!cm||cm.status!=="applied")return false;
+ s=c.step("The node's own telemetry decides the verdict (verification waits 45 s)");let v=null;const w0=Date.now();
+ for(let i=0;i<100&&!(v&&/verified|failed_verification|aborted/.test(v.status));i++){await sleep(1000);v=(await saas(S.a,"/api/remediation/"+id)).j;s.info(`waiting ${Math.round((Date.now()-w0)/1000)} s`)}
+ const vd=v&&v.verdict||{},b=(vd.before||{}).metrics||{},af=(vd.after||{}).metrics||{};
+ v&&v.status==="verified"&&vd.verdict==="improved"?s.ok(`improved · CPU ${b.cpu}% → ${af.cpu}% · measured, not predicted`):s.fail(v?v.status+" "+vd.verdict+" "+(vd.note||""):"no verdict");
+ const tl=(v&&v.timeline||[]).map(e=>`<tr><td class="mono">${esc(e.event)}</td><td class="small">${esc(e.actor)}</td><td class="small">${esc(JSON.stringify(e.detail).slice(0,110))}</td></tr>`).join("");
+ c.ev(`<table><tr><th>EVENT</th><th>BY</th><th>DETAIL</th></tr>${tl}</table><div class="small" style="margin-top:6px">Two keys: the tenant admin chose <b>collector</b>, and the customer's collector runs with its actuator on. Beta's collector offers nothing, so nothing could be done there. The command was signed for alpha's key, expires in 60 s and was delivered once.</div>`);
+ return !!(v&&v.status==="verified"&&vd.verdict==="improved"&&(af.cpu||100)<(b.cpu||0))
+ }finally{await put("simulation");await col(S.a,"/api/chaos/scenario/clearfault","POST").catch(()=>0)}}
+
+const PROOF={1:p1,2:p2,3:p3,4:p4,5:p5,6:p6,7:p7,8:p8},BUSY={},RESULT={};
 async function run(n){if(BUSY[n])return RESULT[n];BUSY[n]=true;if(!T0)T0=Date.now();const c=C(n),btn=document.querySelector(`#p${n} .b`);c.reset();c.running();btn.disabled=true;
  try{RESULT[n]=!!await PROOF[n](c)}catch(e){RESULT[n]=false;c.step("Error").fail(e.message)}
  const v=$("p"+n).querySelector(".v");v.className="pill "+(RESULT[n]?"pass":"fail")+" v";v.textContent=RESULT[n]?"PROOF HOLDS":"FAILED";btn.disabled=false;BUSY[n]=false;sum();return RESULT[n]}
-function sum(){const k=Object.values(RESULT).filter(Boolean).length;$("sum").textContent=k+"/7";$("sum").className="mono "+(k===7?"ok":"")}
-async function all(){$("all").disabled=true;for(const n of [1,3,7,4,5,2,6])await run(n);$("all").disabled=false}
+function sum(){const k=Object.values(RESULT).filter(Boolean).length;$("sum").textContent=k+"/8";$("sum").className="mono "+(k===8?"ok":"")}
+async function all(){$("all").disabled=true;for(const n of [1,3,7,4,5,2,6,8])await run(n);$("all").disabled=false}
 document.querySelectorAll(".b").forEach(b=>b.onclick=()=>run(+b.dataset.n));$("all").onclick=all;
-$("rst").onclick=()=>{T0=null;for(const n of [1,2,3,4,5,6,7]){C(n).reset();delete RESULT[n]}sum()};
-document.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"||e.metaKey||e.ctrlKey)return;if("1234567".includes(e.key)&&e.key)run(+e.key);if(e.key==="r"||e.key==="R")all()});
+$("rst").onclick=()=>{T0=null;for(const n of [1,2,3,4,5,6,7,8]){C(n).reset();delete RESULT[n]}sum()};
+document.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"||e.metaKey||e.ctrlKey)return;if("12345678".includes(e.key)&&e.key)run(+e.key);if(e.key==="r"||e.key==="R")all()});
 
 let lastAudit=0,aud=null;
 async function trust(){try{const [t,f,al,sm]=await Promise.all([saas(S.a,"/api/tracker?window_s=600"),saas(S.a,"/api/fleet"),saas(S.a,"/api/alerts/summary"),saas(S.a,"/api/aiops/summary")]);
