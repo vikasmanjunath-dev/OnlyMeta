@@ -309,6 +309,18 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
         except ValueError as e:
             raise HTTPException(409, str(e))
 
+    @app.post("/api/ask")
+    def ask(body: dict, u: dict = Depends(user)):
+        q = body.get("question")
+        if not isinstance(q, str):
+            raise HTTPException(422, "question must be text")
+        return ai.ask.answer(u["tenant"], q)
+
+    @app.get("/api/ask/examples")
+    def ask_examples(u: dict = Depends(user)):
+        from saas.aiops.ask import EXAMPLES
+        return EXAMPLES
+
     @app.get("/api/aiops/joint")
     def aiops_joint(u: dict = Depends(user)):
         return ai.joint_baselines(u["tenant"])

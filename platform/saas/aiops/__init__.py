@@ -10,6 +10,7 @@ from typing import Optional
 from saas.aiops.baseline import METRICS, Detector, Trend, describe, signal_weights
 from saas.aiops.correlate import COLLECTOR_PREFIX, SECURITY_PREFIX, Graph
 from saas.aiops import learn as learner
+from saas.aiops.ask import Ask
 from saas.aiops.multivar import JointDetector, describe_joint
 from saas.aiops.incidents import IncidentManager
 from saas.aiops.maintenance import Maintenance
@@ -36,6 +37,7 @@ class AIOps:
         self.maint = Maintenance(engine.store_of, audit)
         self.webhooks = Webhooks(ROOT / "contracts/webhooks.yaml", engine.store_of, audit, threaded)
         self.joint = JointDetector(self.th, self.det.sigma_eff)
+        self.ask = Ask(self)
         self.inc = IncidentManager(self.th, bus, audit, engine.store_of, self.graph)
         self.inc.on_open.append(lambda t, i, ctx=None: self.webhooks.emit(t, "incident_opened", {"incident": self._wh(t, i)}))
         self.inc.on_resolve.append(lambda t, i: self.webhooks.emit(t, "incident_resolved", {"incident": self._wh(t, i)}))
