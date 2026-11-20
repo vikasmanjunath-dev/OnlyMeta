@@ -1,0 +1,10 @@
+# node -> list of nodes it depends on. Used by correlation: alerts within the correlation
+# window on nodes connected through this map merge into one incident; the root cause is the
+# anomalous node with no anomalous dependency.
+tenant-alpha:
+  app-01: [db-01]
+  db-01: [net-01]
+  net-01: []
+tenant-beta:
+  web-01: [db-02]
+  db-02: []

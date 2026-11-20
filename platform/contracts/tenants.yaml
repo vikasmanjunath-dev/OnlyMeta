@@ -1,0 +1,16 @@
+# Tenants, regions and residency. API keys come from the environment, never from git.
+tenants:
+  tenant-alpha:
+    region: in
+    source_tz: Asia/Kolkata
+    key_env: KEY_ALPHA
+    collector_id: col-alpha-01
+    ingest: "https://localhost:8000/ingest"
+  tenant-beta:
+    region: eu
+    source_tz: Europe/Berlin
+    key_env: KEY_BETA
+    collector_id: col-beta-01
+    ingest: "https://localhost:8000/ingest"
+# SaaS stores one SQLite file per region (data/saas_<region>.db), never copied across files.
+# Ingest rejects a payload whose region differs from the tenant's configured region.
