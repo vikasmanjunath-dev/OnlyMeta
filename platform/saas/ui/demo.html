@@ -21,17 +21,17 @@ details{margin-top:8px;color:var(--g);font-size:13px}summary{cursor:pointer;colo
 @media (max-width:1100px){.grid{grid-template-columns:1fr}#trust{grid-template-columns:repeat(3,1fr)}}
 </style></head><body>
 
-<div id="login" class="card"><h1>Proof Board</h1><div class="sub" style="margin-bottom:14px">Five live proofs, one click each. Sign in to both demo tenants.</div>
+<div id="login" class="card"><h1>Proof Board</h1><div class="sub" style="margin-bottom:14px">Six live proofs, one click each. Sign in to both demo tenants.</div>
 <div class="row2"><div><h2>ALPHA · REGION IN</h2><input id="au" value="alpha-admin"><input id="ap" type="password" value="alpha-demo-pass"><input id="ac" value="http://127.0.0.1:8001" title="alpha collector"></div>
 <div><h2>BETA · REGION EU</h2><input id="bu" value="beta-admin"><input id="bp" type="password" value="beta-demo-pass"><input id="bc" value="http://127.0.0.1:8002" title="beta collector"></div></div>
 <button id="go" style="width:100%;margin-top:10px">Connect</button><div id="err" class="bad small" style="margin-top:8px"></div></div>
 
 <div id="board" hidden>
 <div class="top"><h1>Proof Board</h1><span class="sub" id="who"></span><span class="sp"></span><span class="small mono" id="clock">0:00</span>
-<span id="sum" class="mono">0/5</span><button id="all" title="R">Run all proofs <kbd>R</kbd></button><button id="rst" class="sec">Reset</button></div>
+<span id="sum" class="mono">0/6</span><button id="all" title="R">Run all proofs <kbd>R</kbd></button><button id="rst" class="sec">Reset</button></div>
 <div id="trust"></div>
 <div class="grid" id="cards"></div>
-<div class="small" style="margin-top:14px">Synthetic data: the healthy feed and every fault are generated locally and labelled as such. Remediation is a simulation; nothing real is touched. Keys <kbd>1</kbd>–<kbd>5</kbd> run a single proof.</div>
+<div class="small" style="margin-top:14px">Synthetic data: the healthy feed and every fault are generated locally and labelled as such. Remediation is a simulation; nothing real is touched. Keys <kbd>1</kbd>–<kbd>6</kbd> run a single proof.</div>
 </div>
 
 <script>
@@ -47,6 +47,7 @@ const DEFS=[
  {id:3,t:"AIOps names the root cause and proposes a safe fix",say:"A database CPU spike and application latency arrive together. The detector uses each node's own baseline (z-score), correlates alerts through the dependency map, ranks the root with explained weights, and proposes a fix the twin predicts will help. Approval is human; execution is simulated.",fb:"If no incident appears: press Prime baselines in the tile above, then run again. Remember the first proof run needs warm detectors."},
  {id:4,t:"Tenants and regions are isolated, and tampering is refused",say:"Beta (EU) is signed in next to alpha (IN). Beta asking for alpha's payload, node or incident gets the same answer as for something that does not exist. A payload claiming another tenant, or an edited copy of a delivered one, is rejected by the SaaS.",fb:"If a rejection step shows nothing sent yet, run proof 1 first so the collector has a delivered payload to copy."}
  ,{id:5,t:"Dependencies are learned from telemetry, and a human approves them",say:"Nobody tells the platform how the nodes depend on each other. It looks at which node deviates first, failure after failure, and tests whether that order could be chance. We inject six cascades with the declared map out of the loop: it rediscovers app depends on db depends on net, with the evidence for each edge. A suggestion changes nothing until an admin accepts it.",fb:"If an edge is missing, press 5 again (the SaaS needs the history delivered first). Nodes that start at the same moment are listed as undirected: the platform will not guess an order."}
+ ,{id:6,t:"Many small deviations, one alert: nothing crosses a single-metric limit",say:"Memory, latency, packet loss and bandwidth each drift about 2.6 standard deviations. No single-metric threshold fires, and no per-metric z-score alert would. The multivariate detector scores the whole vector against the node's own mean and covariance (Mahalanobis distance) and the limit is a probability, 0.1 % per sample, not a guess. It opens one anomaly that says which metrics moved together.",fb:"If nothing opens: detectors need 40 clean samples (the board primes them). If a single-metric anomaly opened instead, the drift was too strong for this feed: press Reset and run again."}
 ];
 $("cards").innerHTML=DEFS.map(d=>`<div class="card" id="p${d.id}"><div class="head"><span class="num">${d.id}</span><h3>${d.t}</h3><span class="sp"></span><span class="pill idle v">READY</span><button class="b" data-n="${d.id}">Run</button></div>
 <ol class="steps"></ol><div class="ev"></div><details><summary>Say this · if it fails</summary><p>${esc(d.say)}</p><p class="warn">${esc(d.fb)}</p></details></div>`).join("");
@@ -149,15 +150,32 @@ async function p5(c){
  c.ev(`<table><tr><th>UPSTREAM</th><th></th><th>DEPENDENT</th><th>ORDERED</th><th>P</th><th>LIFT</th><th>LAG</th><th>VS MAP</th><th>DECISION</th></tr>${r.edges.map(e=>`<tr><td>${esc(e.up_label)}</td><td class="arr">→</td><td>${esc(e.dep_label)}</td><td class="mono">${e.forward}/${e.support}</td><td class="mono">${e.p}</td><td class="mono">${e.lift??"–"}×</td><td class="mono">${e.lag_s??"–"} s</td><td>${e.status}</td><td>${e.decision||"suggested"}</td></tr>`).join("")}</table><div class="small" style="margin-top:6px">P: chance that failures would line up in this order by luck (sign test). LIFT: how much more often they co-occur than two unrelated nodes would. Only an admin-accepted edge changes root-cause analysis.</div>`);
  return ok&&!bad.length&&conf.length>0}
 
-const PROOF={1:p1,2:p2,3:p3,4:p4,5:p5},BUSY={},RESULT={};
+async function p6(c){
+ let s=c.step("Joint detectors are warm (40 clean samples per node)");const jw=async()=>{const j=(await saas(S.a,"/api/aiops/joint")).j||{},k=Object.values(j);return k.length>0&&k.every(x=>x.warm)};
+ if(!await jw()){s.info("priming with 40 calm samples…");let ok=false;await prime();for(let i=0;i<14&&!ok;i++){ok=await jw();if(!ok)await sleep(1000)}if(!ok){s.fail("not warm");return false}}s.ok("warm");
+ s=c.step("Wait for a calm fleet");let calm=false;for(let i=0;i<45&&!calm;i++){const l=(await saas(S.a,"/api/incidents?limit=20")).j||[];calm=!l.some(x=>x.status==="open");if(!calm)await sleep(1000)}calm?s.ok("calm"):s.fail("an earlier incident is still open");
+ const t0=Date.now()/1000;s=c.step("Drift db-01: memory, latency, loss and bandwidth each about 2.6σ off (6 ticks, about 30 s)");const r=await col(S.a,"/api/chaos/scenario/drift?ticks=6","POST");s.ok(`${r.payloads_emitted} payloads · none past its own limit`);
+ s=c.step("Wait for the joint anomaly");let j=null,all=[];
+ for(let i=0;i<45&&!j;i++){await sleep(1000);all=(await saas(S.a,"/api/aiops/anomalies?state=open&limit=30")).j||[];j=all.find(a=>a.metric==="joint"&&a.label==="db-01"&&a.detected_ts>=t0-60)||null}
+ if(!j){s.fail("no joint anomaly");return false}s.ok(`opened ${((Date.now()/1000)-t0).toFixed(1)} s after injection`);
+ const det=JSON.parse(j.detail||"{}"),parts=Object.entries(det.contrib||{}).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])),mx=Math.max(...parts.map(p=>Math.abs(p[1])));
+ s=c.step("No single metric is anomalous on its own");const single=all.filter(a=>a.label==="db-01"&&a.metric!=="joint");
+ !single.length&&mx<3?s.ok(`0 single-metric anomalies · largest |z| ${mx.toFixed(1)} < 3`):s.fail(single.map(a=>a.metric).join(", ")||"a metric exceeds 3σ");
+ const inc=((await saas(S.a,"/api/incidents?limit=10")).j||[]).find(x=>x.status==="open"&&x.root_label==="db-01");
+ c.ev(`<table><tr><th>METRIC</th><th>VS ITS BASELINE</th><th></th></tr>${parts.map(([m,z])=>`<tr><td>${esc(m)}</td><td class="mono">${z>0?"+":""}${z.toFixed(1)}σ</td><td style="width:50%">${bar(Math.abs(z)/3,Math.abs(z)<3?"var(--green)":"var(--red)")}</td></tr>`).join("")}</table>
+  <div style="margin-top:8px"><b>Together:</b> distance² ${det.d2} against a limit of ${det.threshold_d2} (chi-square, p &lt; ${det.alpha}) · ${inc?esc(inc.title):"anomaly raised"}</div>
+  <div class="small" style="margin-top:4px">Green bars: each metric is inside its own ±3σ band. The joint distance is what is improbable.</div>`);
+ return !single.length&&mx<3&&det.d2>det.threshold_d2}
+
+const PROOF={1:p1,2:p2,3:p3,4:p4,5:p5,6:p6},BUSY={},RESULT={};
 async function run(n){if(BUSY[n])return RESULT[n];BUSY[n]=true;if(!T0)T0=Date.now();const c=C(n),btn=document.querySelector(`#p${n} .b`);c.reset();c.running();btn.disabled=true;
  try{RESULT[n]=!!await PROOF[n](c)}catch(e){RESULT[n]=false;c.step("Error").fail(e.message)}
  const v=$("p"+n).querySelector(".v");v.className="pill "+(RESULT[n]?"pass":"fail")+" v";v.textContent=RESULT[n]?"PROOF HOLDS":"FAILED";btn.disabled=false;BUSY[n]=false;sum();return RESULT[n]}
-function sum(){const k=Object.values(RESULT).filter(Boolean).length;$("sum").textContent=k+"/5";$("sum").className="mono "+(k===5?"ok":"")}
-async function all(){$("all").disabled=true;for(const n of [1,3,4,5,2])await run(n);$("all").disabled=false}
+function sum(){const k=Object.values(RESULT).filter(Boolean).length;$("sum").textContent=k+"/6";$("sum").className="mono "+(k===6?"ok":"")}
+async function all(){$("all").disabled=true;for(const n of [1,3,4,5,2,6])await run(n);$("all").disabled=false}
 document.querySelectorAll(".b").forEach(b=>b.onclick=()=>run(+b.dataset.n));$("all").onclick=all;
-$("rst").onclick=()=>{T0=null;for(const n of [1,2,3,4,5]){C(n).reset();delete RESULT[n]}sum()};
-document.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"||e.metaKey||e.ctrlKey)return;if("12345".includes(e.key)&&e.key)run(+e.key);if(e.key==="r"||e.key==="R")all()});
+$("rst").onclick=()=>{T0=null;for(const n of [1,2,3,4,5,6]){C(n).reset();delete RESULT[n]}sum()};
+document.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"||e.metaKey||e.ctrlKey)return;if("123456".includes(e.key)&&e.key)run(+e.key);if(e.key==="r"||e.key==="R")all()});
 
 let lastAudit=0,aud=null;
 async function trust(){try{const [t,f,al,sm]=await Promise.all([saas(S.a,"/api/tracker?window_s=600"),saas(S.a,"/api/fleet"),saas(S.a,"/api/alerts/summary"),saas(S.a,"/api/aiops/summary")]);

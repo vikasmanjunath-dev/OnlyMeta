@@ -146,6 +146,11 @@ class CalmSource:
     and labelled as such in /api/status (sources: ["calm"])."""
     def __init__(self, interval_s: float = 5.0, nodes=("app-01", "db-01", "net-01")):
         self.interval_s, self.nodes, self.malformed, self.read = interval_s, nodes, 0, 0
+        self.drift: dict = {}                                         # node -> [ticks left, overrides]
+
+    def inject(self, node: str, ticks: int, overrides: dict):
+        """Make `node` report `overrides` for the next `ticks` ticks of THIS feed (in order, in the same window: no mixing with calm samples)."""
+        self.drift[node] = [max(int(ticks), 1), dict(overrides)]
 
     async def aevents(self, stop: asyncio.Event) -> AsyncIterator[dict]:
         from datetime import timedelta
@@ -155,7 +160,10 @@ class CalmSource:
             ts = t0 + timedelta(seconds=5 * k)
             for n in self.nodes:
                 self.read += 1
-                yield normalise(ev(n, ts=ts))
+                d = self.drift.get(n)
+                yield normalise(ev(n, ts=ts, **(d[1] if d and d[0] > 0 else {})))
+            for d in self.drift.values():
+                d[0] -= 1
             k += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self.interval_s)

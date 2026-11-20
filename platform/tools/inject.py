@@ -31,7 +31,7 @@ def ticks(base, n, make, every=5):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("scenario", choices="secret outage bruteforce latency cpu incident dup ooo servicedown config".split())
+    ap.add_argument("scenario", choices="secret outage bruteforce latency cpu incident dup ooo servicedown config drift".split())
     ap.add_argument("--base", default="http://127.0.0.1:8001")
     ap.add_argument("--seconds", type=float, default=30)
     ap.add_argument("--n", type=int, default=15)
@@ -58,6 +58,8 @@ def main():
     elif a.scenario == "incident":
         ticks(b, a.ticks, lambda i: [ev("db-01", cpu_percent=92, mem_percent=91, latency_ms=120),
                                      ev("app-01", latency_ms=280, packet_loss_pct=2.5, cpu_percent=88)])
+    elif a.scenario == "drift":
+        ticks(b, a.ticks, lambda i: [ev("db-01", cpu_percent=42.0, mem_percent=62.2, latency_ms=43.0, packet_loss_pct=0.62, bandwidth_mbps=146.0)])
     elif a.scenario == "dup":
         print(post(b, f"/api/chaos/dup?n={a.n if a.n != 15 else 3}"))
     elif a.scenario == "servicedown":

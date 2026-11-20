@@ -14,6 +14,9 @@ def ev(node, ts=None, **kw):
     return base
 
 
+DRIFT = dict(cpu_percent=42.0, mem_percent=62.2, latency_ms=43.0, packet_loss_pct=0.62, bandwidth_mbps=146.0)
+
+
 def _ticks(n, make, now, every=5):
     out = []
     for i in range(n):
@@ -40,6 +43,8 @@ def build(name: str, n: int = 15, ms: float = 400, pct: float = 95, ticks: int =
                                         ev("app-01", ts=t, latency_ms=280, packet_loss_pct=2.5, cpu_percent=88)], now)
     if name == "prime":                       # calm back-dated history so detectors are warm before a demo (synthetic, replay-flagged)
         return _ticks(max(ticks, 1), lambda t: [ev(n, ts=t) for n in ("app-01", "db-01", "net-01")], now)
+    if name == "drift":                       # every metric of db-01 a little off (about 2.6 sigma each, none past its own limit): only a joint detector sees it
+        return _ticks(max(ticks, 1), lambda t: [ev("db-01", ts=t, **DRIFT)], now)
     if name == "cascade":                      # `ticks` back-dated failures spread over the past: net-01 first, db-01 5 s later, app-01 10 s later (synthetic history for the topology learner)
         return cascade(min(max(ticks, 1), 12), now)
     raise KeyError(name)
@@ -60,4 +65,4 @@ def cascade(episodes: int, now, every=5, per=36, start_after_h=2.0) -> list:
     return out
 
 
-EVENT_SCENARIOS = ("secret", "bruteforce", "servicedown", "ooo", "cpu", "latency", "incident", "prime", "cascade")
+EVENT_SCENARIOS = ("secret", "bruteforce", "servicedown", "ooo", "cpu", "latency", "incident", "prime", "cascade", "drift")

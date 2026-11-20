@@ -121,6 +121,11 @@ def create_app(settings=None) -> FastAPI:
     @app.post("/api/chaos/scenario/{name}")
     async def scenario(name: str, n: int = 15, seconds: float = 30, kind: str = "tamper", ticks: int = 3):
         """One-click scenarios for the demo; each returns what the system did, so the panel can show proof."""
+        if name == "drift":                                    # live: the running calm feed itself drifts, so the samples arrive in order, one per window
+            live = next((x for x in pipe.sources if hasattr(x, "inject")), None)
+            if live:
+                live.inject("db-01", min(max(ticks, 1), 60), scenarios.DRIFT)
+                return {"scenario": name, "mode": "live", "ticks": min(max(ticks, 1), 60), "payloads_emitted": min(max(ticks, 1), 60), "node": "db-01", "evidence": []}
         if name in scenarios.EVENT_SCENARIOS:
             before_nm, before_bl = pipe.near_miss, pipe.blocked
             ids = []
