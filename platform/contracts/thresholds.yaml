@@ -1,0 +1,70 @@
+# Configurable constants, shown in the UI (playbook section 2.5 and 2.6).
+constants:
+  send_interval_s: 5            # per node; each payload doubles as a heartbeat
+  offline_threshold_s: 30       # no payload for this long => POOR (COLLECTOR OFFLINE); target is <= 60
+  stale_check_loop_s: 5         # detection delay <= threshold + loop
+  zscore_threshold: 3.0         # anomaly when |current - mean| / sigma > 3
+  baseline_window_samples: 180  # 15 minutes at 5 s
+  baseline_warmup_samples: 30   # use static limits until warm
+  sigma_floor_pct_of_mean: 5    # sigma_eff = max(sigma, 5% of mean, absolute floor)
+  sigma_floor_abs: {cpu: 2, mem: 1, latency_ms: 5, packet_loss: 0.2}
+  failed_login_window_s: 60
+  failed_logins_fair: 5
+  failed_logins_poor: 10        # brute force
+  replay_cutoff_s: 10           # sent_at - event_time above this => is_replay
+  node_silent_s: 15             # a node silent this long => SERVICE_DOWN payload (collector side; 3 windows)
+  outbox_batch_size: 50
+  outbox_backoff_s: [1, 2, 4, 5]
+  correlation_window_s: 30
+  raw_retention_s: 3600         # raw store kept locally for 1 hour
+  upgrade_after_clean_samples: 3
+  # --- collector advancements ---
+  outbox_max_rows: 20000        # backpressure cap on PENDING rows; beyond it the lowest severity is shed, counted, never silent
+  stable_every: 1               # adaptive sampling: send every Nth STABLE sample per node (1 = off). Keep N * 5 s < offline_threshold_s
+  # --- saas advancements ---
+  alert_cooldown_s: 60          # same node + same alert signature inside this window is folded into one alert
+  flap_transitions: 4           # this many state changes ...
+  flap_window_s: 300            # ... inside this window = "flapping": one grouped alert, not N
+  retention_s: 86400            # SaaS keeps events this long (state history / alerts / rejects 7x)
+  rate_limit_rps: 20            # per collector key, sustained; burst = 2x
+  key_grace_s: 600              # after rotation the old key keeps working this long
+  signature_skew_s: 300         # signed batch timestamp tolerance
+  skew_warn_s: 2                # clock offset between collector and SaaS worth reporting
+targets:                        # measured from timestamps, not claimed
+  dashboard_latency_p95_s: 10
+  alert_delay_s: 15
+  offline_detection_s: 60
+  post_outage_delivery: {loss: 0, duplicates: 0}
+
+# Four health states: worst signal wins. Downgrade on 1 sample, upgrade after 3 clean.
+health_states:
+  EXCELLENT: {cpu_lt: 70, mem_lt: 80, latency_ms_lt: 100, packet_loss_lt: 1, failed_logins_lt: 3}
+  GOOD:      {cpu: [70, 85], mem: [80, 90], latency_ms: [100, 250], packet_loss: [1, 2], failed_logins: [3, 4]}
+  FAIR:      {cpu_gt: 85, mem_gt: 90, latency_ms_gt: 250, packet_loss: [2, 10], failed_logins: [5, 9], open_anomaly: true}
+  POOR:      {collector_silent_s_gt: 30, packet_loss_gt: 10, service_down: true, failed_logins_gte: 10, cpu_gt_95_consecutive: 3}
+
+# --- P3 AIOps (anomaly detection, correlation, remediation). Same file, same rule: measured, not claimed.
+aiops:
+  confirm_k: 2                  # a moderate anomaly (z just over the threshold) must show in K of the last N samples ...
+  confirm_n: 3
+  fast_path_z: 6.0              # ... unless it is extreme: then it opens at once
+  clear_clean_samples: 3        # an anomaly closes after this many normal samples in a row
+  level_shift_samples: 36       # 3 min of sustained deviation = a new normal: re-baseline and say so
+  rebuild_trim_mads: 4.0        # when a baseline is rebuilt from history, drop points further than this from the median (robust)
+  trend_window_samples: 60      # 5 min of samples for the forecast
+  trend_min_r2: 0.8             # the line must actually fit before we forecast
+  trend_horizon_s: 1800         # warn only if the limit is reached within 30 min
+  trend_limits: {mem: 90, disk: 95, cpu: 95}
+  correlate_hops: 2             # nodes this close in the dependency map can belong to one incident
+  rca_weights: {coverage: 0.5, timing: 0.3, strength: 0.2}     # shown to the user as the "weighted explanation"
+  timing_tolerance_s: 6         # an upstream fault should not start AFTER the nodes that depend on it (minus this slack)
+  incident_hold_s: 30           # a resolved member re-joining within this time re-opens nothing new
+  draft_after_s: 8              # a proposal is drafted this long after an incident opens (lets the root cause settle)
+  seasonal:                     # hour-of-day (and weekend) baselines: a nightly batch is normal at 02:00, not at 14:00
+    enabled: true
+    bucket_s: 3600
+    min_samples: 40             # clean samples a bucket needs before it replaces the rolling window
+    size: 360                   # newest clean samples kept per bucket (30 min)
+  slo: {mttd_s: 15, mttr_s: 300, noise_reduction_min_pct: 50}   # targets the SLO card is judged against
+  security: {burst_n: 5, window_s: 60, clear_s: 90}              # rejected signed requests on one key id that make an incident
+  reopen_within_s: 300          # flap damping: the same root failing again within 5 min of resolving reopens that incident
