@@ -16,7 +16,7 @@ If anything is amber at T-5, fix it then; do not discover it live. Re-run `prefl
 ## The five minutes
 | Time | Say | Do | The judge sees |
 |---|---|---|---|
-| 0:00 | "Two tiers. Raw data stays in the customer's network; the SaaS only ever sees a schema allow-list. We will prove eight claims live, on the real system." | Point at the **trust strip**: p95 vs the 10 s target, delivered counts, audit chain, fleet, noise, detectors | Live numbers, not slides |
+| 0:00 | "Two tiers. Raw data stays in the customer's network; the SaaS only ever sees a schema allow-list. We will prove nine claims live, on the real system." | Point at the **trust strip**: p95 vs the 10 s target, delivered counts, audit chain, fleet, noise, detectors | Live numbers, not slides |
 | 0:25 | "Claim 1: a secret never leaves." | Press **1** | Fake credentials highlighted on the RAW side; none in OUTBOUND; SaaS hash identical to the collector's |
 | 1:10 | "Claim 2: a network cut loses nothing." | Press **2**. Talk while it runs (below) | Timeline: collector OFFLINE, SaaS marks nodes stale at about +30 s, link back, outbox drained, ledger reconciled: 0 missing, 0 mismatched |
 | 2:20 | "Claim 3: it explains, not just alerts." | Press **3** | Incident with a named root (db-01), weighted explanation, z-scores against each node's own baseline, a fix with the twin's prediction |
@@ -26,8 +26,9 @@ If anything is amber at T-5, fix it then; do not discover it live. Re-run `prefl
 | 4:35 | "Claim 6: it catches what no single threshold can." | Press **6**; talk through the next 30 s (below) | One anomaly, "metric pattern (joint)" on db-01; every metric's bar is green (inside its own ±3σ band); distance² above a chi-square limit |
 | 5:10 | "Claim 7: ask it in plain English; no model, so no invention." | Press **7** (about 10 s); then type one question live in the Tracker's Incidents tab | Answers name the incident, root cause and confidence, each cited; "weather in Paris" is declined; beta gets "unknown node" |
 | 5:40 | "Claim 8: a real action, two keys, verified by telemetry." | Press **8** (about 90 s; talk over it with the Q&A above, or show the recorded timeline) | `improved`: CPU before → after; beta offers nothing |
-| 7:10 | "Every proof is a re-runnable check, not a recording." | Point at **8/8** and the clock | `8/8` |
-| 7:20 | Close (below) | Open **/tracker** → Audit if asked | Hash-chained audit, SLO card |
+| 7:10 | "Claim 9: a fix that is only credited when it beats the node's own trend." | Press **9** (about 2 min) or show the recorded run; read the two columns | Naive: improved. Counterfactual: coincident, not credited |
+| 9:20 | "Every proof is a re-runnable check, not a recording." | Point at **9/9** and the clock | `9/9` |
+| 9:30 | Close (below) | Open **/tracker** → Audit if asked | Hash-chained audit, SLO card |
 
 **While proof 2 runs (about 45 s), say:** "The collector writes every payload to a local SQLite outbox before sending and only deletes it
 after the SaaS acknowledges. Each payload has one id minted once, so a retry after a crash is a duplicate the SaaS absorbs. The SaaS marks
@@ -51,6 +52,7 @@ synthetic, and benchmark numbers come from seeded synthetic faults."
 | Any proof red | Real failure | Say so, show the failing step's detail, run `python3 tools/verify_delivery.py` or `python3 tools/demo.py drill` as the independent check |
 
 ## Likely judge questions
+- **"How do you know the fix worked?"** We do not stop at before/after: we fit the node's own pre-action trend, predict what it would have done alone, and credit the action only if reality beats that by a stated margin, with other nodes as a control. A node that was already healing is reported as coincident; too little history is reported as inconclusive. It is a statistical attribution under stated assumptions, not a proof.
 - **"Is the remediation real?"** No: allow-listed actions against a simulator, by design. What is real is the policy engine (two-person rule, separation of duties, protected nodes, blast radius, freeze, kill switch), verification, auto-rollback and the audit trail.
 - **"Why is p95 about 6 s, not 1 s?"** The measure is event time to dashboard and includes the collector's 5 s aggregation window; the target is 10 s. Hops are measured per payload (Tracker tab).
 - **"Why a z-score and not a model?"** Deterministic, explainable, runs per node in O(1). The benchmark shows where it wins and where it misses (small latency shifts); `tools/aiops_bench.py` prints both.
@@ -65,4 +67,4 @@ synthetic, and benchmark numbers come from seeded synthetic faults."
 - **"Why synthetic data?"** The healthy feed and faults are generated locally so every anomaly on screen has a visible cause. The adapter is the only module that knows the input format.
 
 ## After the demo
-Press **Reset**. `python3 tools/demo.py boardcheck` re-runs all eight proofs in headless Chrome on a throw-away stack (about 4 min); `python3 tools/demo.py drill` runs the 41 independent checks.
+Press **Reset**. `python3 tools/demo.py boardcheck` re-runs all nine proofs in headless Chrome on a throw-away stack (about 4 min); `python3 tools/demo.py drill` runs the 41 independent checks.
