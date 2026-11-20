@@ -237,7 +237,7 @@ def drill():
         print("[2c] P4: Proof Board evidence")
         sb, pa = f"http://127.0.0.1:{st.saas_port}", f"http://127.0.0.1:{st.ports['alpha']}"
         page = urllib.request.urlopen(f"{sb}/demo", timeout=10).read().decode()
-        check("/demo serves the Proof Board (4 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated")) and "tenant-alpha" not in page)
+        check("/demo serves the Proof Board (5 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated", "Dependencies are learned")) and "tenant-alpha" not in page)
         cx = {"X-Chaos": "1", "Origin": sb}
         ev = http("POST", f"{pa}/api/chaos/scenario/secret", None, headers=cx)
         check("secret scenario returns outbound evidence with 0 credentials", ev["evidence"] and all(e["secrets_in_outbound"] == 0 for e in ev["evidence"]) and not any(x.decode() in json.dumps(ev) for x in FAKE_SECRETS), f"{len(ev['evidence'])} payloads")
@@ -253,6 +253,26 @@ def drill():
             vok = e.code != 403
         check("only an admin can rebuild baselines (viewer 403)", not vok)
         check("baseline rebuild is audited", http("POST", f"{sb}/api/aiops/baselines/rebuild", {}, ta)["nodes"] >= 1 and any(e["action"] == "baselines_rebuilt" for e in st.saas(ta, "/api/audit?limit=50")))
+
+        print("[2d] P5: learned topology")
+        http("POST", f"{pa}/api/chaos/scenario/cascade?ticks=6", None, headers=cx)
+        st.drained("alpha")
+        lt = {}
+        for _ in range(40):
+            lt = http("GET", f"{sb}/api/aiops/topology/learned", None, ta)
+            if lt["declared"] and all(d["seen"] for d in lt["declared"]) and sum(lt["episodes"].values()) >= 18:
+                break
+            time.sleep(1)
+        check("declared dependencies rediscovered from telemetry alone, none contradicted", bool(lt["declared"]) and all(d["seen"] for d in lt["declared"]) and not any(e["status"] == "contradicts" for e in lt["edges"]),
+              ", ".join(f"{e['up_label']}->{e['dep_label']} {e['forward']}/{e['support']} p={e['p']}" for e in lt["edges"]))
+        try:
+            http("POST", f"{sb}/api/aiops/topology/learned/decision", {"up": lt["edges"][0]["up"], "dep": lt["edges"][0]["dep"], "decision": "accept"}, st.login("alpha", "viewer"))
+            vok = True
+        except urllib.error.HTTPError as e:
+            vok = e.code != 403
+        check("only an admin can accept a learned edge (viewer 403)", not vok)
+        lb = http("GET", f"{sb}/api/aiops/topology/learned", None, st.login("beta", "admin"))
+        check("beta (EU) learns only from its own nodes", not ({n for e in lb["edges"] for n in (e["up"], e["dep"])} & {n for e in lt["edges"] for n in (e["up"], e["dep"])}), f"beta {len(lb['edges'])} edges, alpha {len(lt['edges'])}")
 
         print("[3] crash recovery (kill -9)")
         before = st.status("alpha")["sent"]
@@ -344,7 +364,7 @@ def preflight(fix=False, saas="http://127.0.0.1:8000", alpha="http://127.0.0.1:8
 
 
 def boardcheck():
-    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all four proofs."""
+    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all five proofs."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -369,7 +389,7 @@ def boardcheck():
             pg.click("#all")
             pg.wait_for_function("document.querySelector('#all').disabled===false", timeout=300000)
             pg.wait_for_timeout(500)
-            verdicts = pg.evaluate("[1,2,3,4].map(n=>document.querySelector('#p'+n+' .v').textContent)")
+            verdicts = pg.evaluate("[1,2,3,4,5].map(n=>document.querySelector('#p'+n+' .v').textContent)")
             bad = pg.evaluate("[...document.querySelectorAll('.steps li.bad')].map(l=>l.textContent)")
             pg.screenshot(path=str(tmp / "board.png"), full_page=True)
             b.close()

@@ -40,7 +40,24 @@ def build(name: str, n: int = 15, ms: float = 400, pct: float = 95, ticks: int =
                                         ev("app-01", ts=t, latency_ms=280, packet_loss_pct=2.5, cpu_percent=88)], now)
     if name == "prime":                       # calm back-dated history so detectors are warm before a demo (synthetic, replay-flagged)
         return _ticks(max(ticks, 1), lambda t: [ev(n, ts=t) for n in ("app-01", "db-01", "net-01")], now)
+    if name == "cascade":                      # `ticks` back-dated failures spread over the past: net-01 first, db-01 5 s later, app-01 10 s later (synthetic history for the topology learner)
+        return cascade(min(max(ticks, 1), 12), now)
     raise KeyError(name)
 
 
-EVENT_SCENARIOS = ("secret", "bruteforce", "servicedown", "ooo", "cpu", "latency", "incident", "prime")
+def cascade(episodes: int, now, every=5, per=36, start_after_h=2.0) -> list:
+    """History for the learner, placed `start_after_h` hours back so it never mixes with the live feed. One failure per 180 s: the
+    network degrades, the database follows 5 s later, the application 10 s later. Calm samples in between give the baseline."""
+    t0 = now - timedelta(hours=start_after_h)
+    out = []
+    for e in range(episodes):
+        for i in range(per):
+            t = t0 + timedelta(seconds=every * (e * per + i))
+            net = dict(latency_ms=250, packet_loss_pct=4.0) if 6 <= i < 12 else {}
+            db = dict(cpu_percent=92, latency_ms=90) if 7 <= i < 13 else {}
+            app = dict(latency_ms=280, cpu_percent=85) if 8 <= i < 14 else {}
+            out += [ev("net-01", ts=t, **net), ev("db-01", ts=t, **db), ev("app-01", ts=t, **app)]
+    return out
+
+
+EVENT_SCENARIOS = ("secret", "bruteforce", "servicedown", "ooo", "cpu", "latency", "incident", "prime", "cascade")
