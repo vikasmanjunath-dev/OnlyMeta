@@ -9,7 +9,7 @@ h1{font-size:30px;letter-spacing:-.8px;margin:0}h2{font-size:12px;letter-spacing
 .pass{background:var(--green)}.fail{background:var(--red);color:#fff}.run{background:var(--orange)}.idle{background:var(--line);color:var(--g)}
 button,input{font:inherit;border-radius:12px;border:1px solid var(--line);background:#000;color:var(--t);padding:9px 14px}button{background:var(--blue);border:0;cursor:pointer;font-weight:600}button:disabled{opacity:.4;cursor:default}button.sec{background:var(--line)}
 #login{max-width:560px;margin:8vh auto}#login input{width:100%;margin:5px 0}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-#trust{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}.tile{background:var(--card);border-radius:16px;padding:12px 14px}.tile b{display:block;font-size:24px;letter-spacing:-.8px}.tile span{font-size:11px;color:var(--g2);letter-spacing:1px;font-weight:700}
+#trust{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:14px}.tile{background:var(--card);border-radius:16px;padding:12px 14px}.tile b{display:block;font-size:24px;letter-spacing:-.8px}.tile span{font-size:11px;color:var(--g2);letter-spacing:1px;font-weight:700}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.head{display:flex;gap:10px;align-items:center;margin-bottom:6px}.num{width:30px;height:30px;border-radius:50%;background:var(--blue);display:grid;place-items:center;font-weight:800;flex:none}
 ol.steps{list-style:none;margin:10px 0;padding:0}ol.steps li{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:14px}.ic{width:18px;font-style:normal;font-weight:800;flex:none}li.ok .ic{color:var(--green)}li.bad .ic{color:var(--red)}li.run .ic{color:var(--orange)}li .dt{margin-left:auto;text-align:right;max-width:55%}
 .ev{margin-top:8px}.cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}.box{border-radius:12px;padding:9px 10px;font:11px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;max-height:230px;overflow:auto}
@@ -28,7 +28,7 @@ details{margin-top:8px;color:var(--g);font-size:13px}summary{cursor:pointer;colo
 
 <div id="board" hidden>
 <div class="top"><h1>Proof Board</h1><span class="sub" id="who"></span><span class="sp"></span><span class="small mono" id="clock">0:00</span>
-<span id="sum" class="mono">0/9</span><button id="all" title="R">Run all proofs <kbd>R</kbd></button><button id="rst" class="sec">Reset</button></div>
+<span id="sum" class="mono">0/9</span><button id="core" title="C">Run core 4 <kbd>C</kbd></button><button id="all" title="R">Run all proofs <kbd>R</kbd></button><button id="rst" class="sec">Reset</button></div>
 <div id="trust"></div>
 <div class="grid" id="cards"></div>
 <div class="small" style="margin-top:14px">Synthetic data: the healthy feed and every fault are generated locally and labelled as such. Remediation is a simulation; nothing real is touched. Keys <kbd>1</kbd>–<kbd>7</kbd> run a single proof.</div>
@@ -52,7 +52,7 @@ const DEFS=[
  ,{id:8,t:"A real action, only with two keys, and the telemetry confirms it",say:"Until now remediation was a simulation. Here the SaaS queues a signed command; the customer's own collector re-verifies it and acts only because its owner switched the actuator on. A fault that does not clear by itself is injected on app-01, an admin approves the proposed fix, the collector scales it out, and the verdict comes from the node's own telemetry afterwards, not from a model. The other tenant's collector has its actuator off, so it offers nothing.",fb:"Takes about 90 s (verification waits 45 s on purpose). If it fails early, check that the alpha collector was started with ACTUATOR=calm (demo.py up does). The proof puts the tenant back on the simulator when it ends."}
  ,{id:9,t:"Did the fix cause the recovery, or was the node healing itself?",say:"A before/after check credits every action that happens to precede a recovery. Here a CPU fault on net-01 fades on its own while an admin approves a (simulated) fix. The platform fits the node's pre-action trend, predicts what it would have done alone, and refuses to credit the action. Proof 8 shows the opposite case: a recovery that beats its own trend is credited.",fb:"Takes about 2 min. The attribution is a statistical estimate under stated assumptions (linear trend, higher is worse, peers unaffected), not a proof; with too little history it says inconclusive."}
 ];
-$("cards").innerHTML=DEFS.map(d=>`<div class="card" id="p${d.id}"><div class="head"><span class="num">${d.id}</span><h3>${d.t}</h3><span class="sp"></span><span class="pill idle v">READY</span><button class="b" data-n="${d.id}">Run</button></div>
+$("cards").innerHTML=DEFS.map(d=>`<div class="card" id="p${d.id}"><div class="head"><span class="num">${d.id}</span><h3>${d.t}</h3><span class="sp"></span><span class="dur small mono"></span><span class="pill idle v">READY</span><button class="b" data-n="${d.id}">Run</button></div>
 <ol class="steps"></ol><div class="ev"></div><details><summary>Say this · if it fails</summary><p>${esc(d.say)}</p><p class="warn">${esc(d.fb)}</p></details></div>`).join("");
 
 function C(n){const c=$("p"+n),st=c.querySelector(".steps"),ev=c.querySelector(".ev"),v=c.querySelector(".v");return{
@@ -234,15 +234,17 @@ async function p9(c){
  return !!(v&&v.status==="verified"&&vd.verdict==="improved"&&at&&at.verdict==="coincident")
  }finally{await col(S.a,"/api/chaos/scenario/clearfault","POST").catch(()=>0)}}
 
+const DUR={};
 const PROOF={1:p1,2:p2,3:p3,4:p4,5:p5,6:p6,7:p7,8:p8,9:p9},BUSY={},RESULT={};
-async function run(n){if(BUSY[n])return RESULT[n];BUSY[n]=true;if(!T0)T0=Date.now();const c=C(n),btn=document.querySelector(`#p${n} .b`);c.reset();c.running();btn.disabled=true;
+async function run(n){if(BUSY[n])return RESULT[n];BUSY[n]=true;if(!T0)T0=Date.now();const c=C(n),btn=document.querySelector(`#p${n} .b`);c.reset();c.running();btn.disabled=true;const tS=Date.now();$("p"+n).querySelector(".dur").textContent="";
  try{RESULT[n]=!!await PROOF[n](c)}catch(e){RESULT[n]=false;c.step("Error").fail(e.message)}
- const v=$("p"+n).querySelector(".v");v.className="pill "+(RESULT[n]?"pass":"fail")+" v";v.textContent=RESULT[n]?"PROOF HOLDS":"FAILED";btn.disabled=false;BUSY[n]=false;sum();return RESULT[n]}
+ const v=$("p"+n).querySelector(".v");v.className="pill "+(RESULT[n]?"pass":"fail")+" v";v.textContent=RESULT[n]?"PROOF HOLDS":"FAILED";DUR[n]=Math.round((Date.now()-tS)/1000);$("p"+n).querySelector(".dur").textContent=DUR[n]+" s";btn.disabled=false;BUSY[n]=false;sum();return RESULT[n]}
 function sum(){const k=Object.values(RESULT).filter(Boolean).length;$("sum").textContent=k+"/9";$("sum").className="mono "+(k===9?"ok":"")}
-async function all(){$("all").disabled=true;for(const n of [1,3,7,4,5,2,6,8,9])await run(n);$("all").disabled=false}
-document.querySelectorAll(".b").forEach(b=>b.onclick=()=>run(+b.dataset.n));$("all").onclick=all;
+async function batch(ids){$("all").disabled=true;$("core").disabled=true;for(const n of ids)await run(n);$("all").disabled=false;$("core").disabled=false}
+const all=()=>batch([1,3,7,4,5,2,6,8,9]),core=()=>batch([1,3,2,4]);
+document.querySelectorAll(".b").forEach(b=>b.onclick=()=>run(+b.dataset.n));$("all").onclick=all;$("core").onclick=core;
 $("rst").onclick=()=>{T0=null;for(const n of [1,2,3,4,5,6,7,8,9]){C(n).reset();delete RESULT[n]}sum()};
-document.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"||e.metaKey||e.ctrlKey)return;if("123456789".includes(e.key)&&e.key)run(+e.key);if(e.key==="r"||e.key==="R")all()});
+document.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"||e.metaKey||e.ctrlKey)return;if("123456789".includes(e.key)&&e.key)run(+e.key);if(e.key==="r"||e.key==="R")all();if(e.key==="c"||e.key==="C")core()});
 
 let lastAudit=0,aud=null;
 async function trust(){try{const [t,f,al,sm]=await Promise.all([saas(S.a,"/api/tracker?window_s=600"),saas(S.a,"/api/fleet"),saas(S.a,"/api/alerts/summary"),saas(S.a,"/api/aiops/summary")]);
@@ -253,6 +255,7 @@ async function trust(){try{const [t,f,al,sm]=await Promise.all([saas(S.a,"/api/t
   +tile("AUDIT CHAIN",aud&&aud.ok?"verified":"BROKEN",aud?`${aud.rows} entries, hash-chained`:"…",aud&&aud.ok?"ok":"bad")
   +tile("FLEET",fl.overall,`collector ${fl.collector?(fl.collector.offline?"OFFLINE":"online · silent "+fl.collector.silent_s+" s"):"–"}`,fl.overall==="EXCELLENT"||fl.overall==="GOOD"?"ok":"warn")
   +tile("ALERT NOISE",al.j.noise_reduction_pct==null?"–":Math.round(al.j.noise_reduction_pct)+"%",`${al.j.alerts_shown} shown · ${al.j.folded_repeats} folded`)
+  +tile("TRANSPORT",location.protocol==="https:"?"TLS":"plain HTTP",location.protocol==="https:"?"https · collectors verify the SaaS certificate":"localhost dev · run with --tls for https",location.protocol==="https:"?"ok":"warn")
   +tile("DETECTORS",w.warm?"warm":"cold",`${w.n}/30 samples · <a href="#" id="pr" style="color:var(--blue)">prime</a>`,w.warm?"ok":"warn");
  const pr=$("pr");if(pr)pr.onclick=async e=>{e.preventDefault();pr.textContent="priming…";await prime()}}catch(e){}}
 setInterval(()=>{if(T0){const s=Math.floor((Date.now()-T0)/1000);$("clock").textContent=Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}},500);

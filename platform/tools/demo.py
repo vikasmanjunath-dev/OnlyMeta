@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import signal
+import ssl
 import sqlite3
 import subprocess
 import sys
@@ -22,8 +23,12 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 PY = sys.executable
 FAKE_SECRETS = [b"Hunter2", b"ghp_FAKEFAKEFAKE1234", b"sk-proj-9988221100"]      # what tools/inject.py secret sends
+
+
+CTX = None                                                     # set when the stack runs with TLS: trusts only the demo CA
 
 
 def http(method, url, body=None, token=None, timeout=10, headers=None):
@@ -31,7 +36,7 @@ def http(method, url, body=None, token=None, timeout=10, headers=None):
     if token:
         h["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, method=method, headers=h)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with urllib.request.urlopen(req, timeout=timeout, context=CTX if url.startswith("https") else None) as r:
         return json.loads(r.read() or b"null")
 
 
@@ -49,11 +54,18 @@ def wait(fn, what, timeout=40, every=0.4):
 
 
 class Stack:
-    def __init__(self, data: Path, saas_port, ports: dict, speed="1", source="file"):
+    def __init__(self, data: Path, saas_port, ports: dict, speed="1", source="file", tls=False):
+        global CTX
         self.data, self.saas_port, self.ports, self.speed, self.source = data, saas_port, ports, speed, source       # ports: {"alpha": 8001, "beta": 8002}
         self.procs = {}
         data.mkdir(parents=True, exist_ok=True)
         self.logs = {}
+        self.tls, self.sb, self.cert = tls, f"{'https' if tls else 'http'}://127.0.0.1:{saas_port}", None
+        if tls:
+            from tools.make_cert import make
+            e = os.environ
+            self.cert = {"ca": e["TLS_CA"], "cert": e["TLS_CERT"], "key": e["TLS_KEY"]} if e.get("TLS_CA") and e.get("TLS_CERT") and e.get("TLS_KEY") else make(data / "tls")
+            CTX = ssl.create_default_context(cafile=self.cert["ca"])
 
     def _spawn(self, name, args, env):
         log = open(self.data / f"{name}.log", "ab")
@@ -61,14 +73,15 @@ class Stack:
         self.procs[name] = subprocess.Popen([PY, *args], cwd=ROOT, env={**os.environ, **env}, stdout=log, stderr=subprocess.STDOUT)
 
     def start_saas(self):
-        self._spawn("saas", ["-m", "saas.main", "--port", str(self.saas_port)], {"SAAS_DATA": str(self.data)})
-        wait(lambda: http("GET", f"http://127.0.0.1:{self.saas_port}/healthz"), "SaaS /healthz")
+        tls = ["--certfile", self.cert["cert"], "--keyfile", self.cert["key"]] if self.tls else []
+        self._spawn("saas", ["-m", "saas.main", "--port", str(self.saas_port), *tls], {"SAAS_DATA": str(self.data)})
+        wait(lambda: http("GET", f"{self.sb}/healthz"), "SaaS /healthz")
 
-    def start_collector(self, short):
+    def start_collector(self, short, ca=None):
         port = self.ports[short]
         self._spawn(f"collector-{short}", ["-m", "collector.main", "--port", str(port)],
-                    {"TENANT": f"tenant-{short}", "SAAS_URL": f"http://127.0.0.1:{self.saas_port}/ingest", "SPEED": self.speed, "SOURCES": self.source, "ACTUATOR": "calm" if (short == "alpha" and self.source == "calm") else "off",
-                     "CHAOS_ORIGINS": f"http://127.0.0.1:{self.saas_port},http://localhost:{self.saas_port}",
+                    {"TENANT": f"tenant-{short}", "SAAS_URL": f"{self.sb}/ingest", **({"CA_BUNDLE": ca or self.cert["ca"]} if self.tls else {}), "SPEED": self.speed, "SOURCES": self.source, "ACTUATOR": "calm" if (short == "alpha" and self.source == "calm") else "off",
+                     "CHAOS_ORIGINS": f"{self.sb},{self.sb.replace('127.0.0.1', 'localhost')}",
                      "COLLECTOR_DB": str(self.data / f"collector_{short}.db")})
         wait(lambda: http("GET", f"http://127.0.0.1:{port}/api/status"), f"collector {short}")
 
@@ -92,10 +105,10 @@ class Stack:
 
     def login(self, short, role="admin"):
         pw = f"{short}-demo-pass" if role == "admin" else f"{short}-viewer-pass"
-        return http("POST", f"http://127.0.0.1:{self.saas_port}/api/login", {"username": f"{short}-{role}", "password": pw})["token"]
+        return http("POST", f"{self.sb}/api/login", {"username": f"{short}-{role}", "password": pw})["token"]
 
     def saas(self, token, path):
-        return http("GET", f"http://127.0.0.1:{self.saas_port}{path}", token=token)
+        return http("GET", f"{self.sb}{path}", token=token)
 
     def inject(self, short, *args):
         r = subprocess.run([PY, "-m", "tools.inject", *args, "--base", f"http://127.0.0.1:{self.ports[short]}"], cwd=ROOT,
@@ -107,21 +120,25 @@ class Stack:
 
     def verify(self, short):
         r = subprocess.run([PY, "-m", "tools.verify_delivery", "--collector-db", str(self.data / f"collector_{short}.db"),
-                            "--saas-url", f"http://127.0.0.1:{self.saas_port}", "--tenant", f"tenant-{short}"],
-                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+                            "--saas-url", self.sb, "--tenant", f"tenant-{short}"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60, env={**os.environ, **({"SSL_CERT_FILE": self.cert["ca"]} if self.tls else {})})
         return r.returncode == 0, [(r.stdout + r.stderr).strip()[-160:]]
 
 
-def up():
+def up(tls=False):
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))    # `kill` stops the children too
     data = ROOT / "data"
-    st = Stack(data, 8000, {"alpha": 8001, "beta": 8002}, source=os.getenv("DEMO_STREAM", "calm"))    # calm = healthy synthetic feed, faults only when injected
+    st = Stack(data, 8000, {"alpha": 8001, "beta": 8002}, source=os.getenv("DEMO_STREAM", "calm"), tls=tls)    # calm = healthy synthetic feed, faults only when injected
     try:
         st.start_saas()
         for t in ("alpha", "beta"):
             st.start_collector(t)
-        print("""
- SaaS tracker      http://127.0.0.1:8000/tracker      alpha-admin / alpha-demo-pass     beta-admin / beta-demo-pass
+        sb = st.sb
+        if tls:
+            print(f" TLS is ON. The SaaS certificate is signed by {st.cert['ca']}: collectors trust only that CA.\n Browser: import that CA once, or use mkcert (set TLS_CA, TLS_CERT, TLS_KEY), or accept the warning for 127.0.0.1.")
+        print(f"""
+ Proof Board       {sb}/demo
+ SaaS tracker      {sb}/tracker      alpha-admin / alpha-demo-pass     beta-admin / beta-demo-pass
  Alpha collector   http://127.0.0.1:8001              (tenant-alpha, region IN)
  Beta  collector   http://127.0.0.1:8002              (tenant-beta,  region EU)
  In the tracker's Chaos tab, signed in as beta-admin, change the collector URL to http://127.0.0.1:8002 and press Check.
@@ -209,15 +226,15 @@ def drill():
             rid = pend()[0]["id"]
             tv = st.login("alpha", "viewer")
             try:
-                http("POST", f"http://127.0.0.1:{st.saas_port}/api/remediation/{rid}/approve", {}, tv)
+                http("POST", f"{st.sb}/api/remediation/{rid}/approve", {}, tv)
                 viewer_ok = True
             except urllib.error.HTTPError as e:
                 viewer_ok = e.code != 403
             check("a viewer cannot approve a fix (403)", not viewer_ok)
-            r = http("POST", f"http://127.0.0.1:{st.saas_port}/api/remediation/{rid}/approve", {}, ta)
+            r = http("POST", f"{st.sb}/api/remediation/{rid}/approve", {}, ta)
             check("admin approval executes it as a SIMULATION", r["status"] in ("executed", "verified", "approved") and "simulat" in json.dumps(r).lower(), r["status"])
             check("beta's incidents never name an alpha node", not ({i["root_node"] for i in st.saas(ta, "/api/incidents?limit=50")} & {i["root_node"] for i in st.saas(tb, "/api/incidents?limit=50")}))
-            r = http("POST", f"http://127.0.0.1:{st.saas_port}/api/remediation/{rid}/rollback", {}, ta)
+            r = http("POST", f"{st.sb}/api/remediation/{rid}/rollback", {}, ta)
             check("rollback restores the previous state", r["status"] == "rolled_back", r["status"])
             ev = st.saas(ta, "/api/audit?limit=200")
             check("every step is in the audit chain", sum(1 for e in ev if "remediation" in json.dumps(e)) >= 3, f"{len(ev)} audit rows")
@@ -225,18 +242,18 @@ def drill():
             md = sm["slo"]["mttd"]
             check("SLO card counts detections and never reports a negative time", md["n"] + md["skewed"] >= 1 and (md["p50"] is None or md["p50"] >= 0),
                   f"p50 {md['p50']} s over {md['n']}, {md['skewed']} skipped (drill clock runs 20x)")
-            mw = http("POST", f"http://127.0.0.1:{st.saas_port}/api/maintenance", {"node": "net-01", "minutes": 5, "reason": "drill window"}, ta)
+            mw = http("POST", f"{st.sb}/api/maintenance", {"node": "net-01", "minutes": 5, "reason": "drill window"}, ta)
             check("maintenance window set, listed and cancelled", mw["status"] == "active" and any(w["id"] == mw["id"] for w in st.saas(ta, "/api/maintenance"))
-                  and http("DELETE", f"http://127.0.0.1:{st.saas_port}/api/maintenance/{mw['id']}", None, ta)["ok"])
-            pm = http("POST", f"http://127.0.0.1:{st.saas_port}/api/remediation/policy/simulate", {"policy": {"autonomy": "auto_low"}}, ta)
+                  and http("DELETE", f"{st.sb}/api/maintenance/{mw['id']}", None, ta)["ok"])
+            pm = http("POST", f"{st.sb}/api/remediation/policy/simulate", {"policy": {"autonomy": "auto_low"}}, ta)
             check("policy what-if replays history and saves nothing", pm["n"] >= 1 and st.saas(ta, "/api/remediation/config")["autonomy"] != "auto_low", f"{pm['n']} proposals, {pm['changed']} would change")
         finally:
             bg.terminate()
             st.drained("alpha")
 
         print("[2c] P4: Proof Board evidence")
-        sb, pa = f"http://127.0.0.1:{st.saas_port}", f"http://127.0.0.1:{st.ports['alpha']}"
-        page = urllib.request.urlopen(f"{sb}/demo", timeout=10).read().decode()
+        sb, pa = st.sb, f"http://127.0.0.1:{st.ports['alpha']}"
+        page = urllib.request.urlopen(f"{sb}/demo", timeout=10, context=CTX if st.tls else None).read().decode()
         check("/demo serves the Proof Board (9 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated", "Dependencies are learned", "Many small deviations", "Ask the platform", "only with two keys", "healing itself")) and "tenant-alpha" not in page)
         cx = {"X-Chaos": "1", "Origin": sb}
         ev = http("POST", f"{pa}/api/chaos/scenario/secret", None, headers=cx)
@@ -287,7 +304,7 @@ def drill():
         act = http("GET", f"{sb}/api/actuator", None, ta)
         check("actuator: default is the simulator, and this collector (actuator off) offers nothing", act["mode"] == "simulation" and act["capabilities"] == [] and act["commands"] == [], f"online={act['online']}")
         try:
-            urllib.request.urlopen(f"{sb}/collector/commands", timeout=5)
+            urllib.request.urlopen(f"{sb}/collector/commands", timeout=5, context=CTX if st.tls else None)
             unsigned = 200
         except urllib.error.HTTPError as e:
             unsigned = e.code
@@ -388,16 +405,17 @@ def preflight(fix=False, saas="http://127.0.0.1:8000", alpha="http://127.0.0.1:8
     return 1 if bad else 0
 
 
-def boardcheck():
-    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all nine proofs."""
+def boardcheck(tls=False, core=False):
+    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all nine proofs
+    (or only the four core ones with --core; over https with --tls). Prints how long each proof took."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         print("boardcheck needs Playwright: pip install playwright && playwright install chromium")
         return 2
     tmp = Path(tempfile.mkdtemp(prefix="cicada-board-"))
-    st = Stack(tmp, 18100, {"alpha": 18101, "beta": 18102}, speed="1", source="calm")
-    ok, detail = False, ""
+    st = Stack(tmp, 18100, {"alpha": 18101, "beta": 18102}, speed="1", source="calm", tls=tls)
+    ids, ok, detail = ([1, 2, 3, 4] if core else [1, 2, 3, 4, 5, 6, 7, 8, 9]), False, ""
     try:
         st.start_saas()
         for t in ("alpha", "beta"):
@@ -405,21 +423,25 @@ def boardcheck():
         time.sleep(6)
         with sync_playwright() as p:
             b = p.chromium.launch()
-            pg = b.new_page(viewport={"width": 1500, "height": 1100})
-            pg.goto(f"http://127.0.0.1:{st.saas_port}/demo")
+            pg = b.new_context(ignore_https_errors=tls, viewport={"width": 1500, "height": 1100}).new_page()
+            pg.goto(f"{st.sb}/demo")
             pg.fill("#ac", f"http://127.0.0.1:{st.ports['alpha']}")
             pg.fill("#bc", f"http://127.0.0.1:{st.ports['beta']}")
             pg.click("#go")
             pg.wait_for_selector("#board:not([hidden])", timeout=10000)
-            pg.click("#all")
-            pg.wait_for_function("document.querySelector('#all').disabled===false", timeout=300000)
+            t0 = time.time()
+            pg.click("#core" if core else "#all")
+            pg.wait_for_function("document.querySelector('#all').disabled===false", timeout=600000)
+            took = round(time.time() - t0)
             pg.wait_for_timeout(500)
-            verdicts = pg.evaluate("[1,2,3,4,5,6,7,8,9].map(n=>document.querySelector('#p'+n+' .v').textContent)")
+            verdicts = pg.evaluate(f"{ids}.map(n=>document.querySelector('#p'+n+' .v').textContent)")
+            dur = pg.evaluate("DUR")
+            transport = pg.evaluate("[...document.querySelectorAll('.tile')].filter(t=>t.textContent.includes('TRANSPORT')).map(t=>t.querySelector('b').textContent)[0]")
             bad = pg.evaluate("[...document.querySelectorAll('.steps li.bad')].map(l=>l.textContent)")
             pg.screenshot(path=str(tmp / "board.png"), full_page=True)
             b.close()
-        ok = all(v == "PROOF HOLDS" for v in verdicts)
-        detail = f"{verdicts} {bad}"
+        ok = all(v == "PROOF HOLDS" for v in verdicts) and transport == ("TLS" if tls else "plain HTTP")
+        detail = f"{verdicts} {bad} transport={transport} total={took}s per-proof={ {k: dur[k] for k in sorted(dur)} }"
     except Exception as e:
         detail = repr(e)
     finally:
@@ -428,9 +450,64 @@ def boardcheck():
     return 0 if ok else 1
 
 
+def tlscheck():
+    """Proves the link is really TLS: https answers with the demo CA; an untrusting client and a plain-HTTP client are refused; data is delivered over it;
+    and a collector given the WRONG CA refuses the SaaS and delivers nothing (an impostor server gets no telemetry)."""
+    import socket
+    from tools.make_cert import make
+    res = []
+
+    def check(name, ok, detail=""):
+        res.append(bool(ok))
+        print(f"  {'PASS' if ok else 'FAIL'}  {name}  {detail}", flush=True)
+    tmp = Path(tempfile.mkdtemp(prefix="cicada-tls-"))
+    st = Stack(tmp, 18200, {"alpha": 18201, "beta": 18202}, speed="20", tls=True)
+    try:
+        print(f"[tlscheck] data dir {tmp}")
+        st.start_saas()
+        wrong = make(tmp / "wrong-ca")["ca"]                                      # a different CA: stands for an impostor SaaS
+        st.start_collector("alpha")
+        st.start_collector("beta", ca=wrong)
+        check("https /healthz answers when the demo CA is trusted", http("GET", f"{st.sb}/healthz") is not None)
+        sock = socket.create_connection(("127.0.0.1", st.saas_port), timeout=5)
+        tsock = CTX.wrap_socket(sock, server_hostname="127.0.0.1")
+        ver, cert = tsock.version(), tsock.getpeercert()
+        tsock.close()
+        check("negotiated TLS 1.2 or newer, certificate valid for 127.0.0.1", ver in ("TLSv1.2", "TLSv1.3") and any(v == "127.0.0.1" for k, v in cert["subjectAltName"]), f"{ver}")
+        try:
+            urllib.request.urlopen(f"{st.sb}/healthz", timeout=5, context=ssl.create_default_context())
+            untrusted = "accepted"
+        except (ssl.SSLError, urllib.error.URLError) as e:
+            untrusted = "refused" if "CERTIFICATE_VERIFY_FAILED" in str(e) else str(e)[:60]
+        check("a client that does not trust the CA refuses the connection", untrusted == "refused", untrusted)
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{st.saas_port}/healthz", timeout=5)
+            plain = "answered"
+        except Exception as e:  # noqa: BLE001
+            plain = "refused"
+        check("plain http to the TLS port gets no answer", plain == "refused", plain)
+        ta = st.login("alpha", "admin")
+        got = wait(lambda: (http("GET", f"{st.sb}/api/tracker?window_s=600", token=ta)["funnel"]["received"] or 0) > 0, "alpha deliveries over TLS", 60)
+        check("the alpha collector (trusts the CA) delivers telemetry over TLS", got)
+        ok2, rep = st.verify("alpha")
+        check("delivery reconciles exactly over TLS (collector ledger vs SaaS store)", ok2, rep[0][:80])
+        time.sleep(6)
+        sb_ = st.status("beta")
+        tb = st.login("beta", "admin")
+        recv = http("GET", f"{st.sb}/api/tracker?window_s=600", token=tb)["funnel"]["received"]
+        check("a collector holding the WRONG CA refuses the server and delivers nothing", recv == 0 and "ERTIFICATE" in str(sb_.get("last_error")), f"received={recv} last_error={str(sb_.get('last_error'))[:70]}")
+        check("... and it keeps the data buffered locally instead of dropping it", (sb_.get("queue_depth") or 0) > 0, f"queue_depth={sb_.get('queue_depth')}")
+    finally:
+        st.stop()
+    print(f"[tlscheck] {sum(res)}/{len(res)} passed\n[tlscheck] logs in {tmp}")
+    return 0 if all(res) else 1
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["up", "drill", "preflight", "boardcheck"])
+    ap.add_argument("cmd", choices=["up", "drill", "preflight", "boardcheck", "tlscheck"])
+    ap.add_argument("--tls", action="store_true", help="up / boardcheck: serve the SaaS over https (demo CA); collectors verify it")
+    ap.add_argument("--core", action="store_true", help="boardcheck: only the four core proofs (1-4)")
     ap.add_argument("--fix", action="store_true", help="preflight: prime the detectors when they are cold")
     a = ap.parse_args()
-    sys.exit({"drill": drill, "up": up, "boardcheck": boardcheck}.get(a.cmd, lambda: preflight(a.fix))())
+    sys.exit({"drill": drill, "up": lambda: up(a.tls), "boardcheck": lambda: boardcheck(a.tls, a.core), "tlscheck": tlscheck}.get(a.cmd, lambda: preflight(a.fix, saas=os.getenv("SAAS_BASE", "http://127.0.0.1:8000")))())
