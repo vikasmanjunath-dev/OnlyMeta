@@ -1,0 +1,285 @@
+<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CICADA Console</title><link rel="icon" id="fav" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Ccircle cx='4' cy='4' r='4' fill='%23888'/%3E%3C/svg%3E"><style>
+:root{--bg:#0b0e13;--sf:#12161d;--sf2:#181d26;--bd:#242b37;--tx:#e7ebf1;--mu:#8d97a8;--ac:#6d7cff;--ac2:#4b59d6;--ok:#2fd27a;--warn:#f0a62a;--bad:#ff6a5c;--sh:0 8px 30px #0006;--r:12px}
+[data-theme=light]{--bg:#f4f6f9;--sf:#fff;--sf2:#f0f2f6;--bd:#e1e5ec;--tx:#141820;--mu:#667085;--ac:#4b59d6;--ac2:#3946b8;--ok:#0f9d58;--warn:#c47f00;--bad:#d92d20;--sh:0 8px 30px #1a233a22}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}a{color:var(--ac);text-decoration:none}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:6px}
+.btn{background:var(--sf2);border:1px solid var(--bd);padding:7px 13px;border-radius:9px;cursor:pointer;transition:.15s}.btn:hover{border-color:var(--ac)}
+.btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}.btn.pri:hover{background:var(--ac2)}.btn.bad{color:var(--bad)}.btn.sm{padding:3px 9px;font-size:12px}.btn[disabled]{opacity:.5;pointer-events:none}
+input,select,textarea{background:var(--sf2);border:1px solid var(--bd);border-radius:9px;padding:8px 11px;width:100%}input:focus,select:focus,textarea:focus{border-color:var(--ac);outline:0}
+#login{display:none;min-height:100%;place-items:center;padding:20px}#login.on{display:grid}
+.lbox{width:100%;max-width:380px;background:var(--sf);border:1px solid var(--bd);border-radius:18px;padding:30px;box-shadow:var(--sh)}.lbox h1{margin:0 0 4px;font-size:22px}.lbox .mu{margin-bottom:18px}.lbox input{margin-bottom:10px}
+#app{display:none;height:100%;grid-template-columns:224px 1fr;grid-template-rows:56px 1fr}#app.on{display:grid}
+aside{grid-row:1/3;background:var(--sf);border-right:1px solid var(--bd);display:flex;flex-direction:column;padding:14px 10px}
+.brand{font-weight:700;font-size:16px;padding:6px 10px 16px;display:flex;align-items:center;gap:9px}.brand i{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,var(--ac),#9b6dff)}
+nav a{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;color:var(--mu);margin-bottom:2px;cursor:pointer}nav a:hover{background:var(--sf2);color:var(--tx)}nav a.on{background:var(--sf2);color:var(--tx);font-weight:600;box-shadow:inset 2px 0 var(--ac)}
+nav a .n{margin-left:auto;background:var(--bad);color:#fff;border-radius:99px;font-size:11px;padding:0 7px;min-width:20px;text-align:center}
+.side-foot{margin-top:auto;font-size:12px;color:var(--mu);padding:10px}
+header{display:flex;align-items:center;gap:10px;padding:0 22px;border-bottom:1px solid var(--bd);background:var(--sf)}header .sp{flex:1}
+.kbd{border:1px solid var(--bd);border-radius:6px;padding:0 6px;font-size:11px;color:var(--mu)}.srch{display:flex;gap:10px;align-items:center;min-width:240px;justify-content:space-between;text-align:left}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mu)}.live i{width:8px;height:8px;border-radius:50%;background:var(--mu)}.live.on i{background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pu 2s infinite}
+@keyframes pu{70%{box-shadow:0 0 0 7px #0000}}
+main{overflow:auto;padding:24px 26px 60px}.wrap{max-width:1180px;margin:0 auto}
+h1.pg{font-size:22px;margin:0 0 4px}.sub{color:var(--mu);margin-bottom:20px}h2{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--mu);margin:0 0 12px;font-weight:600}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:16px 18px;margin-bottom:16px}.grid{display:grid;gap:16px}.g4{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}.g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.big{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1}.mu{color:var(--mu)}.sm{font-size:12px}.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd)}.row:last-child{border:0}.row .sp{flex:1;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--bd);border-radius:99px;padding:1px 9px;font-size:12px;white-space:nowrap}.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.EXCELLENT,.GOOD,.ok{--c:var(--ok)}.FAIR,.warn,.medium{--c:var(--warn)}.POOR,.bad,.critical,.high{--c:var(--bad)}.low{--c:var(--mu)}.dot{background:var(--c,var(--mu))}.pill.c{color:var(--c);border-color:var(--c)}
+.banner{border-radius:var(--r);padding:20px 24px;margin-bottom:18px;display:flex;align-items:center;gap:16px;border:1px solid var(--c,var(--bd));background:linear-gradient(90deg,color-mix(in srgb,var(--c,var(--ac)) 16%,var(--sf)),var(--sf))}
+.banner .t{font-size:20px;font-weight:700}.att{border-left:3px solid var(--c,var(--warn));background:var(--sf2);border-radius:9px;padding:10px 13px;margin-bottom:9px;display:flex;gap:10px;align-items:center;cursor:default}.att .sp{flex:1}
+.empty{text-align:center;color:var(--mu);padding:30px 10px}.empty b{display:block;color:var(--tx);margin-bottom:4px}
+.bar{height:6px;background:var(--sf2);border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
+table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;color:var(--mu);text-transform:uppercase;letter-spacing:.06em;padding:6px 8px;border-bottom:1px solid var(--bd)}td{padding:9px 8px;border-bottom:1px solid var(--bd)}tr:last-child td{border:0}
+.tabs{display:flex;gap:4px;margin-bottom:16px}.tabs button{background:0;border:0;padding:6px 13px;border-radius:99px;color:var(--mu);cursor:pointer}.tabs button.on{background:var(--sf2);color:var(--tx);font-weight:600}
+.link{cursor:pointer}.link:hover{color:var(--ac)}.feed .row{font-size:13px;padding:7px 0}.feed time{color:var(--mu);font-size:11px;width:54px;flex:none}
+.node{cursor:pointer}.node:hover{border-color:var(--ac)}.sp svg{display:block}
+.chat{display:flex;flex-direction:column;gap:14px;margin-bottom:14px}.msg{max-width:78%;padding:11px 15px;border-radius:14px}.msg.u{align-self:flex-end;background:var(--ac);color:#fff}.msg.a{align-self:flex-start;background:var(--sf);border:1px solid var(--bd)}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.chip{background:var(--sf2);border:1px solid var(--bd);border-radius:99px;padding:3px 11px;font-size:12px;cursor:pointer}.chip:hover{border-color:var(--ac)}
+.tl{position:relative;padding-left:20px}.tl:before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--bd)}.tl div{position:relative;padding:5px 0}.tl div:before{content:"";position:absolute;left:-19px;top:11px;width:8px;height:8px;border-radius:50%;background:var(--ac)}
+.modal{position:fixed;inset:0;background:#0009;display:none;align-items:flex-start;justify-content:center;padding-top:12vh;z-index:50}.modal.on{display:flex}
+.pal{width:min(560px,92vw);background:var(--sf);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--sh);overflow:hidden}.pal input{border:0;border-bottom:1px solid var(--bd);border-radius:0;padding:15px 18px;font-size:16px}.pal ul{list-style:none;margin:0;padding:6px;max-height:340px;overflow:auto}
+.pal li{padding:9px 12px;border-radius:9px;cursor:pointer;display:flex;gap:10px}.pal li.sel{background:var(--sf2);box-shadow:inset 2px 0 var(--ac)}.pal li .mu{margin-left:auto}
+#toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:9px;z-index:60;max-width:360px}.toast{background:var(--sf);border:1px solid var(--bd);border-left:4px solid var(--c,var(--ac));border-radius:10px;padding:11px 14px;box-shadow:var(--sh);cursor:pointer;animation:in .25s}@keyframes in{from{transform:translateY(10px);opacity:0}}
+.field{margin-bottom:11px}.field label{display:block;font-size:12px;color:var(--mu);margin-bottom:4px}.inl{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.inl>*{flex:1;min-width:110px}.inl .btn{flex:none}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}pre.code{background:var(--sf2);border:1px solid var(--bd);border-radius:9px;padding:11px;overflow:auto;position:relative;margin:8px 0}
+.skel{background:linear-gradient(90deg,var(--sf2),var(--sf),var(--sf2));background-size:200% 100%;animation:sk 1.2s infinite;border-radius:8px;height:18px;margin:8px 0}@keyframes sk{to{background-position:-200% 0}}
+.err{border:1px solid var(--bad);color:var(--bad);border-radius:10px;padding:10px 14px;margin-bottom:14px}
+@media(max-width:820px){#app{grid-template-columns:1fr;grid-template-rows:56px 1fr 58px}aside{grid-row:3;flex-direction:row;padding:4px;border:0;border-top:1px solid var(--bd)}.brand,.side-foot{display:none}nav{display:flex;width:100%;justify-content:space-around}nav a{flex-direction:column;gap:0;font-size:11px;padding:6px 8px}nav a.on{box-shadow:none}.srch .kbd{display:none}.srch{min-width:0;flex:1}#toasts{bottom:70px;left:10px;right:10px;max-width:none}nav a{font-size:10px}main{padding:16px}.msg{max-width:92%}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body>
+<div id="login" class="on"><form class="lbox" id="lf"><h1>CICADA Console</h1><div class="mu">Sign in to your tenant</div><input id="lu" placeholder="Username" autocomplete="username" aria-label="Username"><input id="lp" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password"><button class="btn pri" style="width:100%" id="lgo">Sign in</button><div id="lerr" class="sm" style="color:var(--bad);margin-top:10px;min-height:18px" role="alert"></div></form></div>
+<div id="app"><aside><div class="brand"><i></i>CICADA</div><nav id="nav" aria-label="Main"></nav><div class="side-foot"><div id="who"></div><div style="margin-top:8px"><a href="/tracker">Engineering tracker</a> · <a href="/demo">Proof board</a></div></div></aside>
+<header><button class="btn srch" id="srch" aria-label="Open command palette"><span>Search or jump to…</span><span class="kbd">⌘K</span></button><div class="sp"></div><span class="live" id="live" role="status"><i></i><span>connecting</span></span><button class="btn sm" id="theme" aria-label="Toggle light or dark theme">Theme</button><button class="btn sm" id="out">Sign out</button></header>
+<main id="main" tabindex="-1"><div class="wrap" id="view"></div></main></div>
+<div class="modal" id="pm" role="dialog" aria-modal="true" aria-label="Command palette"><div class="pal"><input id="pi" placeholder="Type a page, node, incident or a question…" autocomplete="off"><ul id="pl"></ul></div></div>
+<div id="toasts" aria-live="polite"></div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const h=(t,a,...k)=>{const e=document.createElement(t);for(const x in a||{}){const v=a[x];if(v==null||v===false)continue;if(x=="class")e.className=v;else if(x=="style")e.style.cssText=v;else if(x.startsWith("on"))e.addEventListener(x.slice(2),v);else e.setAttribute(x,v===true?"":v)}for(const c of k.flat(9))if(c!=null&&c!==false)e.append(c.nodeType?c:document.createTextNode(c));return e};
+const sess={get:k=>{try{return sessionStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{sessionStorage.setItem(k,v)}catch(e){}},del:k=>{try{sessionStorage.removeItem(k)}catch(e){}}};
+const loc={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+let T=sess.get("tok"),ME=null,ES=null,S={fleet:null,topo:{},inc:[],rem:[],sum:null,al:null,cols:[],hist:{}},ROUTE="overview",feed=[],hold=0;
+const ago=s=>{s=Math.max(0,s);return s<90?Math.round(s)+"s":s<5400?Math.round(s/60)+"m":s<172800?(s/3600).toFixed(1)+"h":Math.round(s/86400)+"d"};
+const clock=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+const full=t=>new Date(t*1000).toLocaleString();
+const LBL={EXCELLENT:"Operational",GOOD:"Operational",FAIR:"Degraded",POOR:"Disrupted"};
+const lab=id=>(S.topo[id]&&S.topo[id].label)||id;
+const isAdmin=()=>ME&&ME.role=="admin";
+async function api(p,method,body){const o={method:method||"GET",headers:{Authorization:"Bearer "+T}};if(body!==undefined){o.body=JSON.stringify(body);o.headers["Content-Type"]="application/json"}
+ let r;try{r=await fetch(p,o)}catch(e){throw new Error("Network error - is the service reachable?")}
+ if(r.status==401){signout(true);throw new Error("Session expired")}
+ const ct=r.headers.get("content-type")||"",j=ct.includes("json")?await r.json().catch(()=>({})):await r.text();
+ if(!r.ok)throw new Error(typeof j=="object"&&j.detail?(typeof j.detail=="string"?j.detail:JSON.stringify(j.detail)):"Request failed ("+r.status+")");return j}
+function toast(msg,cls,go){const t=h("div",{class:"toast "+(cls||""),role:"status",onclick:()=>{t.remove();go&&go()}},msg);$("toasts").append(t);setTimeout(()=>t.remove(),7000)}
+async function act(btn,fn,okmsg){btn.disabled=true;try{await fn();okmsg&&toast(okmsg,"ok");await refresh()}catch(e){toast(e.message,"bad")}finally{btn.disabled=false}}
+const pill=(s,txt)=>h("span",{class:"pill c "+s},h("i",{class:"dot "+s}),txt||s.toLowerCase());
+const empty=(t,s)=>h("div",{class:"empty"},h("b",{},t),s||"");
+const skel=()=>[h("div",{class:"skel",style:"width:40%;height:26px"}),h("div",{class:"skel"}),h("div",{class:"skel",style:"width:80%"})];
+async function copy(text,btn){try{await navigator.clipboard.writeText(text);toast("Copied","ok")}catch(e){const t=h("textarea",{style:"position:fixed;opacity:0"},text);document.body.append(t);t.select();document.execCommand("copy");t.remove();toast("Copied","ok")}}
+
+/* ---------- auth ---------- */
+$("lf").onsubmit=async e=>{e.preventDefault();$("lerr").textContent="";$("lgo").disabled=true;
+ try{const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("lu").value.trim(),password:$("lp").value})});const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(r.status==429?"Too many attempts - wait a minute.":"Wrong username or password.");T=j.token;sess.set("tok",T);$("lp").value="";boot()}catch(x){$("lerr").textContent=x.message}$("lgo").disabled=false};
+function signout(expired){if(T)fetch("/api/logout",{method:"POST",headers:{Authorization:"Bearer "+T}}).catch(()=>{});T=null;sess.del("tok");ME=null;ES&&ES.close();ES=null;$("app").classList.remove("on");$("login").classList.add("on");$("lerr").textContent=expired?"Session expired - please sign in again.":"";$("lu").focus()}
+$("out").onclick=()=>signout();
+/* ---------- theme ---------- */
+function theme(t){document.documentElement.dataset.theme=t;loc.set("theme",t)}
+theme(loc.get("theme")||(matchMedia("(prefers-color-scheme:light)").matches?"light":"dark"));
+$("theme").onclick=()=>theme(document.documentElement.dataset.theme=="dark"?"light":"dark");
+/* ---------- data ---------- */
+async function refresh(){if(!T)return;
+ try{const [fl,tp,inc,sum,al,cols]=await Promise.all([api("/api/fleet"),api("/api/topology"),api("/api/incidents?limit=60"),api("/api/aiops/summary"),api("/api/alerts/summary"),api("/api/collectors")]);
+  let rem=[];try{rem=await api("/api/remediation")}catch(e){}
+  S.fleet=fl;S.topo=tp;S.inc=inc;S.sum=sum;S.al=al;S.cols=cols;S.rem=Array.isArray(rem)?rem:[];chrome();render()}catch(e){if(T)banner(e.message)}}
+function banner(m){const v=$("view");if(!v.firstChild||v.querySelector(".skel"))v.replaceChildren(h("div",{class:"err",role:"alert"},m,h("button",{class:"btn sm",style:"margin-left:10px",onclick:()=>refresh()},"Retry")))}
+const pending=()=>S.rem.filter(r=>r.status=="pending_approval");
+const openInc=()=>S.inc.filter(i=>i.status=="open");
+function chrome(){const o=S.fleet.overall,n=openInc().length;document.title=(n?`(${n}) `:"")+(LBL[o]||o)+" · CICADA";
+ const col={EXCELLENT:"%232fd27a",GOOD:"%232fd27a",FAIR:"%23f0a62a",POOR:"%23ff6a5c"}[o]||"%23888";$("fav").href=`data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Ccircle cx='4' cy='4' r='4' fill='${col}'/%3E%3C/svg%3E`;
+ const items=[["overview","◉","Overview",0],["incidents","⚠","Incidents",n],["fleet","▦","Fleet",0],["ask","✦","Ask",0],["ops","⚙","Operations",pending().length],["settings","☰","Settings",0]];
+ $("nav").replaceChildren(...items.map(([k,i,t,c])=>h("a",{class:ROUTE==k?"on":"",href:"#/"+k,"aria-current":ROUTE==k?"page":null},h("span",{"aria-hidden":"true"},i),t,c?h("span",{class:"n"},c):null)));
+ $("who").textContent=`${ME.username} · ${ME.role} · ${S.fleet.tenant_id} (${S.fleet.region.toUpperCase()})`}
+/* ---------- live stream ---------- */
+function connect(){ES&&ES.close();ES=new EventSource("/api/stream?token="+encodeURIComponent(T));let deb=0;
+ const lv=(on,t)=>{$("live").classList.toggle("on",on);$("live").lastChild.textContent=t};
+ ES.onopen=()=>lv(true,"live");ES.onerror=()=>lv(false,"reconnecting");
+ const bump=()=>{clearTimeout(deb);deb=setTimeout(()=>refresh(),700)};
+ ES.addEventListener("state",e=>{const d=JSON.parse(e.data);note("state",d);if(d.new=="POOR"||d.new=="FAIR"||d.old=="POOR")toast(`${lab(d.node)} is now ${LBL[d.new]||d.new}`,d.new,()=>go("fleet"));bump()});
+ ES.addEventListener("incident",e=>{const d=JSON.parse(e.data);note("incident",d);if(d.status=="open"&&d.title)toast(`Incident: ${d.title}`,d.severity||"warn",()=>go("incidents/"+d.id));bump()});
+ for(const k of["anomaly","collector","insight","remediation"])ES.addEventListener(k,e=>{note(k,JSON.parse(e.data));bump()});
+ ES.addEventListener("bye",()=>signout(true))}
+function note(k,d){const t=d.ts||Date.now()/1000;let m="";
+ if(k=="state")m=`${lab(d.node)}: ${d.old} → ${d.new}`;else if(k=="incident")m=`Incident ${d.ref||"#"+d.id} ${d.status||""} ${d.title||""}`;
+ else if(k=="anomaly")m=d.state=="closed"?`Anomaly cleared on ${d.label||lab(d.node)} (${d.metric})`:`Anomaly on ${d.label||lab(d.node)}: ${d.metric} z=${d.z!=null?(+d.z).toFixed(1):"?"}`;
+ else if(k=="collector")m=`Collector ${d.collector_id} ${d.status}`;else if(k=="insight")m=`Forecast for ${d.label}: ${d.metric||""} ${d.text||""}`;else m=k;
+ feed.unshift({t,k,m});feed.length=Math.min(feed.length,40);if(ROUTE=="overview")renderFeed()}
+/* ---------- router ---------- */
+function go(p){location.hash="#/"+p}
+addEventListener("hashchange",()=>{ROUTE=(location.hash.slice(2)||"overview");$("main").scrollTop=0;hold=0;if(ME){chrome();render()}});
+function render(){const [r,arg]=ROUTE.split("/");const v=$("view");const fn=VIEWS[r]||VIEWS.overview;const sc=$("main").scrollTop;
+ if(hold&&v.firstChild)return;
+ v.replaceChildren(fn(arg));$("main").scrollTop=sc}
+/* ---------- views ---------- */
+const VIEWS={};
+const kpi=(t,v,s)=>h("div",{class:"card",style:"margin:0"},h("h2",{},t),h("div",{class:"big"},v),h("div",{class:"sm mu",style:"margin-top:4px"},s||""));
+const nodeState=id=>{const n=S.fleet.nodes.find(x=>x.node==id);return n?(n.stale?"stale":n.state):"unknown"};
+function attention(){const L=[];
+ for(const r of pending())L.push(h("div",{class:"att POOR",style:"--c:var(--warn)"},h("div",{class:"sp"},h("b",{},`Approve: ${r.action.replace(/_/g," ")} on ${lab(r.node)}`),h("div",{class:"sm mu"},`risk ${r.risk} · ${Math.round(r.confidence*100)}% confidence · REM-${r.id}`)),
+  isAdmin()?[h("button",{class:"btn sm pri",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/approve`,"POST",{}),"Approved")},"Approve"),h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/reject`,"POST",{}),"Rejected")},"Reject")]:null,h("a",{href:"#/incidents/"+r.incident_id},"Details")));
+ for(const i of openInc().filter(i=>!i.ack_by))L.push(h("div",{class:"att "+i.severity},h("div",{class:"sp"},h("b",{},i.title),h("div",{class:"sm mu"},`${i.ref} · ${i.severity} · open ${ago(i.duration_s)} · not acknowledged`)),
+  isAdmin()?h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api(`/api/incidents/${i.id}/ack`,"PUT"),"Acknowledged")},"Acknowledge"):null,h("a",{href:"#/incidents/"+i.id},"Open")));
+ for(const c of S.cols.filter(c=>c.offline))L.push(h("div",{class:"att POOR"},h("div",{class:"sp"},h("b",{},`Collector ${c.collector_id} is offline`),h("div",{class:"sm mu"},`silent for ${ago(c.silent_s)} - data on its nodes is stale`))));
+ return L.length?L:[h("div",{class:"sm mu"},"✓ Nothing needs you right now.")]}
+function topoSvg(){const T_=S.topo,ids=Object.keys(T_);if(!ids.length)return empty("No topology yet","Nodes appear once the collector reports.");
+ const lvl={};const lv=id=>lvl[id]!=null?lvl[id]:(lvl[id]=-1,lvl[id]=Math.max(-1,...(T_[id].depends_on||[]).map(d=>T_[d]?lv(d):-1))+1);ids.forEach(lv);
+ const cols={};ids.forEach(i=>(cols[lvl[i]]=cols[lvl[i]]||[]).push(i));const nc=Math.max(...Object.keys(cols).map(Number))+1,mr=Math.max(...Object.values(cols).map(c=>c.length));
+ const W=Math.max(520,nc*200),H=Math.max(150,mr*80+40),pos={};for(const c in cols)cols[c].forEach((id,i)=>pos[id]=[60+c*((W-120)/Math.max(1,nc-1||1)),H/(cols[c].length+1)*(i+1)]);
+ const ns="http://www.w3.org/2000/svg",sv=document.createElementNS(ns,"svg");sv.setAttribute("viewBox",`0 0 ${W} ${H}`);sv.setAttribute("role","img");sv.setAttribute("aria-label","Dependency map");sv.style.cssText="width:100%;height:auto;max-height:260px";
+ const mk=(t,a,tx)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);if(tx!=null)e.textContent=tx;return e};
+ sv.append(mk("defs",{}));const d=sv.firstChild;const ar=mk("marker",{id:"ar",viewBox:"0 0 8 8",refX:7,refY:4,markerWidth:7,markerHeight:7,orient:"auto"});ar.append(mk("path",{d:"M0 0L8 4L0 8z",fill:"var(--mu)"}));d.append(ar);
+ for(const id of ids)for(const dep of T_[id].depends_on||[])if(pos[dep]){const[a,b]=[pos[dep],pos[id]];sv.append(mk("line",{x1:a[0]+34,y1:a[1],x2:b[0]-36,y2:b[1],stroke:"var(--mu)","stroke-width":1.5,"marker-end":"url(#ar)",opacity:.6}))}
+ const CC={EXCELLENT:"var(--ok)",GOOD:"var(--ok)",FAIR:"var(--warn)",POOR:"var(--bad)",stale:"var(--mu)",unknown:"var(--mu)"};
+ for(const id of ids){const[x,y]=pos[id],st=nodeState(id),g=mk("g",{style:"cursor:pointer",tabindex:0,role:"link","aria-label":`${lab(id)} ${st}`});g.append(mk("rect",{x:x-34,y:y-20,width:68,height:40,rx:11,fill:"var(--sf2)",stroke:CC[st],"stroke-width":2}),mk("circle",{cx:x-20,cy:y-8,r:4,fill:CC[st]}),mk("text",{x:x,y:y+5,"text-anchor":"middle",fill:"var(--tx)","font-size":12,"font-weight":600},lab(id)));
+  g.onclick=()=>go("fleet");g.onkeydown=e=>e.key=="Enter"&&go("fleet");sv.append(g)}
+ return sv}
+function renderFeed(){const f=$("feed");if(!f)return;f.replaceChildren(...(feed.length?feed.slice(0,12).map(e=>h("div",{class:"row"},h("time",{},clock(e.t)),h("span",{class:"sp"},e.m))):[h("div",{class:"sm mu"},"Waiting for live events…")]))}
+VIEWS.overview=()=>{const F=S.fleet,o=F.overall,n=openInc().length,sm=S.sum,inc=sm.incidents||{},al=S.al||{};
+ const noData=!F.nodes.length;
+ const b=h("div",{class:"banner "+o},h("span",{class:"dot",style:"width:16px;height:16px"}),h("div",{},h("div",{class:"t"},noData?"Waiting for data":LBL[o]||o),h("div",{class:"mu"},noData?"No node has reported yet.":`${F.nodes.length} node${F.nodes.length>1?"s":""} monitored · ${n?n+" open incident"+(n>1?"s":""):"no open incidents"} · ${F.region.toUpperCase()} region`)),h("div",{style:"flex:1"}),noData&&isAdmin()?h("a",{class:"btn pri",href:"#/setup"},"Connect a collector"):null);
+ return h("div",{},h("h1",{class:"pg"},"Overview"),h("div",{class:"sub"},"What is happening across your estate, and what needs you."),b,
+  h("div",{class:"grid g4",style:"margin-bottom:16px"},kpi("Open incidents",n,`${inc.resolved||0} resolved in the last hour`),kpi("Time to resolve",inc.mttr_s!=null?ago(inc.mttr_s):"-","mean, last hour"),kpi("Detection lag",sm.detect_lag_s&&sm.detect_lag_s.median!=null?ago(sm.detect_lag_s.median):"-","median, fault to alert"),kpi("Noise removed",al.noise_reduction_pct!=null?Math.round(al.noise_reduction_pct)+"%":"-",`${al.folded_repeats||0} repeats folded`)),
+  h("div",{class:"grid g2"},h("div",{},h("div",{class:"card"},h("h2",{},"Needs your attention"),...attention()),h("div",{class:"card"},h("h2",{},"Dependency map"),topoSvg())),
+   h("div",{},h("div",{class:"card"},h("h2",{},"Live activity"),h("div",{class:"feed",id:"feed"})),h("div",{class:"card"},h("h2",{},"Collectors"),...(S.cols.length?S.cols.map(c=>h("div",{class:"row"},pill(c.offline?"POOR":"GOOD",c.offline?"offline":"online"),h("span",{class:"sp"},c.collector_id),h("span",{class:"sm mu"},`queue ${c.health.queue_depth} · v${c.version}`))):[empty("No collectors")])))),
+  setTimeout(renderFeed,0)&&null)};
+/* incidents */
+let incF="open";const DET={};
+VIEWS.incidents=arg=>{if(arg)return incDetail(+arg);
+ const L=S.inc.filter(i=>incF=="all"||(incF=="open")==(i.status=="open")&&i.status!="merged");
+ return h("div",{},h("h1",{class:"pg"},"Incidents"),h("div",{class:"sub"},"Related alerts are grouped into one incident with a named root cause."),
+  h("div",{class:"tabs",role:"tablist"},...["open","resolved","all"].map(k=>h("button",{class:incF==k?"on":"",role:"tab",onclick:()=>{incF=k;render()}},k[0].toUpperCase()+k.slice(1)))),
+  h("div",{class:"card"},...(L.length?L.map(i=>h("div",{class:"row link",tabindex:0,onclick:()=>go("incidents/"+i.id),onkeydown:e=>e.key=="Enter"&&go("incidents/"+i.id)},pill(i.severity),h("div",{class:"sp"},h("b",{},i.title),h("div",{class:"sm mu"},`${i.ref} · ${i.kind} · root cause ${i.root_label} · ${Math.round(i.confidence*100)}% confidence`)),h("span",{class:"sm mu"},i.status=="open"?"open "+ago(i.duration_s):"took "+ago(i.duration_s)),pill(i.status=="open"?"warn":"ok",i.status))):[empty(incF=="open"?"All clear":"Nothing here","No incidents in this view.")])))};
+function incDetail(id){const box=h("div",{});const draw=v=>{const i=v;const rems=i.remediations||[];box.replaceChildren(
+  h("a",{href:"#/incidents",class:"sm"},"← All incidents"),
+  h("div",{style:"display:flex;gap:12px;align-items:center;margin:10px 0 4px;flex-wrap:wrap"},h("h1",{class:"pg",style:"margin:0"},i.title),pill(i.severity),pill(i.status=="open"?"warn":"ok",i.status)),
+  h("div",{class:"sub"},`${i.ref} · ${i.kind} · opened ${full(i.first_ts)} · ${i.status=="open"?"open for "+ago(i.duration_s):"resolved after "+ago(i.duration_s)}${i.ack_by?" · acknowledged by "+i.ack_by:""}`),
+  h("div",{class:"inl",style:"margin-bottom:16px;justify-content:flex-start"},
+   isAdmin()&&i.status=="open"&&!i.ack_by?h("button",{class:"btn pri",onclick:e=>act(e.target,()=>api(`/api/incidents/${id}/ack`,"PUT"),"Acknowledged")},"Acknowledge"):null,
+   isAdmin()?h("button",{class:"btn",onclick:e=>act(e.target,async()=>{const r=await api("/api/shares","POST",{kind:"incident",incident:id,label:i.ref,ttl_h:168});const u=location.origin+r.path;await copy(u);toast("Read-only link copied (valid 7 days)","ok")})},"Share read-only link"):null,
+   h("button",{class:"btn",onclick:async()=>{try{const t=await api(`/api/incidents/${id}/report`);const a=h("a",{href:URL.createObjectURL(new Blob([t],{type:"text/markdown"})),download:`${i.ref}-postmortem.md`});document.body.append(a);a.click();a.remove()}catch(e){toast(e.message,"bad")}}},"Download post-mortem")),
+  h("div",{class:"grid g2"},
+   h("div",{},h("div",{class:"card"},h("h2",{},"Why - root cause"),h("p",{style:"margin-top:0"},i.summary),((i.explanation||{}).text&&(i.explanation||{}).text.trim()!=(i.summary||"").trim())?h("p",{class:"mu"},i.explanation.text):null,...((i.explanation||{}).factors||[]).map(f=>h("div",{style:"margin:9px 0"},h("div",{class:"sm",style:"display:flex;justify-content:space-between"},h("span",{},f.name),h("span",{class:"mu"},`${Math.round(f.contribution*100)} of ${Math.round(f.weight*100)} pts`)),h("div",{class:"bar"},h("i",{style:`width:${f.weight?f.contribution/f.weight*100:0}%`})),h("div",{class:"sm mu"},f.note)))),
+    h("div",{class:"card"},h("h2",{},"Affected nodes"),...i.members.map(m=>h("div",{class:"row"},pill(m.state),h("div",{class:"sp"},h("b",{},m.label)," ",h("span",{class:"mu sm"},m.role)),h("span",{class:"sm mu"},m.recovered?"recovered":(m.signals||[]).map(s=>s.text).join("; ")))))),
+   h("div",{},h("div",{class:"card"},h("h2",{},"Fixes"),...(rems.length?rems.map(r=>remCard(r)):[]),...((i.recommendations||[]).filter(rc=>!rems.some(r=>r.action==rc.action&&r.node==rc.node&&["pending_approval","approved","executed","advisory"].includes(r.status))).map(rc=>h("div",{class:"row"},h("div",{class:"sp"},h("b",{},rc.title),h("div",{class:"sm mu"},`${rc.risk} risk · ${rc.reversible?"reversible":"irreversible"} · ${Math.round(rc.confidence*100)}% · ${rc.rationale[0]||""}`)),isAdmin()&&!rc.advisory?h("button",{class:"btn sm pri",onclick:e=>act(e.target,()=>api("/api/remediation/propose","POST",{node:rc.node,action:rc.action,incident_id:id}),"Proposed - awaiting approval")},"Propose"):pill("low","advisory")))),!rems.length&&!(i.recommendations||[]).length?empty("No fixes proposed","Recommendations appear while an incident is open."):null),
+    h("div",{class:"card"},h("h2",{},"Timeline"),h("div",{class:"tl"},...i.timeline.map(e=>h("div",{},h("span",{class:"mu sm"},clock(e.ts)+"  "),e.kind.replace(/^remediation_/,"fix ").replace(/_/g," "),e.detail&&(e.detail.label||e.detail.action)?h("span",{class:"mu"}," · "+(e.detail.label||e.detail.action)):null)))))))};
+ if(DET[id])draw(DET[id]);else box.replaceChildren(...skel());
+ api("/api/incidents/"+id).then(v=>{DET[id]=v;draw(v)}).catch(e=>box.replaceChildren(h("div",{class:"err"},e.message,h("a",{href:"#/incidents",style:"margin-left:10px"},"Back"))));return box}
+function remCard(r){const p=r.policy||{},v=r.verdict,at=v&&v.attribution;const st={pending_approval:"warn",approved:"warn",executed:"ok",rolled_back:"low",denied:"bad",expired:"low",rejected:"low",advisory:"low"}[r.status]||"low";
+ return h("div",{class:"row",style:"align-items:flex-start;flex-wrap:wrap"},h("div",{class:"sp"},h("b",{},`${r.action.replace(/_/g," ")} on ${lab(r.node)}`)," ",pill(st,r.status.replace(/_/g," ")),
+  h("div",{class:"sm mu"},`REM-${r.id} · ${r.risk} risk · blast radius ${r.blast_radius} · ${r.reversible?"reversible":"irreversible"} · policy: ${p.decision} (${p.required_approvals} approval${p.required_approvals==1?"":"s"})`),
+  r.predicted?h("div",{class:"sm",style:"margin-top:4px"},`Predicted: ${r.predicted.state}${r.predicted.metrics?" · CPU "+r.predicted.metrics.cpu+"%":""} `,h("span",{class:"mu"},"(estimate)")):null,
+  v?h("div",{class:"sm",style:"margin-top:4px"},"Outcome: ",h("b",{},v.verdict||String(v)),at?h("span",{class:"mu"}," · caused by the fix? "+(at.verdict||"").replace(/_/g," ")):null):null),
+  isAdmin()?h("div",{class:"inl",style:"flex:none"},r.status=="pending_approval"?[h("button",{class:"btn sm pri",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/approve`,"POST",{}),"Approved")},"Approve"),h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/reject`,"POST",{}),"Rejected")},"Reject")]:null,
+   r.status=="executed"&&!r.rolled_back_ts?h("button",{class:"btn sm bad",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/rollback`,"POST",{reason:"rolled back from console"}),"Rollback requested")},"Roll back"):null,
+   r.status=="approved"?h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/cancel`,"POST",{}),"Cancelled")},"Cancel"):null):null)}
+/* fleet */
+VIEWS.fleet=()=>{const box=h("div",{},h("h1",{class:"pg"},"Fleet"),h("div",{class:"sub"},"Every monitored node, with the last 15 minutes of CPU."));const g=h("div",{class:"grid g3"});box.append(g);
+ const spark=(pts,c)=>{if(pts.length<2)return h("div",{class:"sm mu"},"collecting…");const mx=Math.max(100,...pts),W=260,H=44,d=pts.map((v,i)=>`${(i/(pts.length-1)*W).toFixed(1)},${(H-v/mx*H).toFixed(1)}`).join(" ");
+  const ns="http://www.w3.org/2000/svg",s=document.createElementNS(ns,"svg");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("preserveAspectRatio","none");s.style.cssText="width:100%;height:44px";const p=document.createElementNS(ns,"polyline");p.setAttribute("points",d);p.setAttribute("fill","none");p.setAttribute("stroke",c);p.setAttribute("stroke-width","2");s.append(p);return s};
+ const nodes=[...S.fleet.nodes].sort((a,b)=>lab(a.node).localeCompare(lab(b.node)));
+ if(!nodes.length)g.replaceWith(empty("No nodes yet","Connect a collector to start."));
+ for(const n of nodes){const st=n.stale?"stale":n.state,m=n.metrics||{},card=h("div",{class:"card node"},h("div",{class:"row",style:"padding-top:0"},h("b",{class:"sp"},lab(n.node)),pill(n.stale?"low":n.state,n.stale?"no recent data":(LBL[n.state]||n.state).toLowerCase())),h("div",{class:"sp"}),
+   h("div",{class:"grid",style:"grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0"},...[["CPU",m.cpu,"%"],["Memory",m.mem,"%"],["Disk",m.disk,"%"],["Latency",m.latency_ms," ms"],["Loss",m.packet_loss,"%"],["Net",m.bandwidth_mbps," Mb/s"]].map(([k,v,u])=>h("div",{},h("div",{class:"sm mu"},k),h("b",{},v!=null?(+v).toFixed(v>=100?0:1)+u:"-")))),
+   h("div",{class:"sp",id:"sp-"+n.node},h("div",{class:"skel",style:"height:44px"})),h("div",{class:"sm mu",style:"margin-top:6px"},n.reasons.join("; ")+" · in this state "+ago(n.since_s)));g.append(card);
+  api(`/api/nodes/${n.node}/history?minutes=15&limit=120`).then(hs=>{const e=document.getElementById("sp-"+n.node);e&&e.replaceChildren(spark(hs.map(x=>x.cpu).filter(v=>v!=null),({EXCELLENT:"var(--ok)",GOOD:"var(--ok)",FAIR:"var(--warn)",POOR:"var(--bad)"})[st]||"var(--mu)"))}).catch(()=>{})}
+ const fc=(S.sum.forecasts||[]);if(fc.length)box.append(h("div",{class:"card"},h("h2",{},"Forecasts"),...fc.map(f=>h("div",{class:"row"},h("span",{class:"sp"},`${f.label}: ${f.metric||""}`),h("span",{class:"mu"},f.text||`reaches limit in ${ago(f.eta_s||0)}`)))));return box};
+/* ask */
+const CHAT=[];let askBox;
+VIEWS.ask=()=>{hold=1;const log=h("div",{class:"chat",role:"log","aria-live":"polite"}),inp=h("input",{placeholder:"Ask about incidents, nodes, fixes, approvals…","aria-label":"Question",autocomplete:"off"}),chips=h("div",{class:"chips"});
+ const say=(role,body)=>{log.append(h("div",{class:"msg "+role},body));log.lastChild.scrollIntoView({block:"end"})};
+ const send=async q=>{q=(q||inp.value).trim();if(!q)return;inp.value="";CHAT.push({r:"u",q});say("u",q);const w=h("div",{class:"msg a mu"},"Thinking…");log.append(w);
+  try{const r=await api("/api/ask","POST",{question:q});w.remove();CHAT.push({r:"a",a:r});answer(r)}catch(e){w.replaceWith(h("div",{class:"msg a err"},e.message))}};
+ const answer=r=>{const c=(r.cites||[]).map(x=>h("span",{class:"chip",onclick:()=>go(x.type=="incident"?"incidents/"+x.id:"ops")},x.ref));
+  say("a",[h("div",{},r.answer),c.length?h("div",{class:"chips"},c):null,(r.followups||[]).length?h("div",{class:"chips"},...r.followups.map(f=>h("span",{class:"chip",onclick:()=>send(f)},f))):null])};
+ CHAT.forEach(m=>m.r=="u"?say("u",m.q):answer(m.a));
+ api("/api/ask/examples").then(ex=>{if(!CHAT.length)chips.replaceChildren(...ex.slice(0,8).map(q=>h("span",{class:"chip",onclick:()=>send(q)},q)))}).catch(()=>{});
+ const f=h("form",{onsubmit:e=>{e.preventDefault();send()}},h("div",{class:"inl"},inp,h("button",{class:"btn pri"},"Ask")));setTimeout(()=>inp.focus(),0);
+ if(askBox){setTimeout(()=>send(askBox),0);askBox=null}
+ return h("div",{},h("h1",{class:"pg"},"Ask"),h("div",{class:"sub"},"Plain-English questions, answered from your own incidents, fixes and audit trail - every answer cites its source."),log,h("div",{class:"card"},h("h2",{},"Try asking"),chips),f)};
+/* operations */
+function box(t,...k){return h("div",{class:"card"},h("h2",{},t),...k)}
+VIEWS.ops=()=>{const root=h("div",{},h("h1",{class:"pg"},"Operations"),h("div",{class:"sub"},"How much the platform may do on its own, planned work, and notifications."),...skel());
+ Promise.all([api("/api/remediation/config"),api("/api/actuator"),api("/api/maintenance"),api("/api/webhooks").catch(()=>({hooks:[]}))]).then(([cfg,ac,mw,wh])=>{
+  const sel=(opts,cur,fn)=>{const s=h("select",{"aria-label":"setting",onchange:e=>fn(e.target.value,e.target)},...opts.map(([v,t])=>h("option",{value:v,selected:v==cur},t)));s.disabled=!isAdmin();return s};
+  const put=(patch,el)=>act(el,()=>api("/api/remediation/config","PUT",patch),"Saved");
+  const aut=box("Autonomy",h("div",{class:"sm mu",style:"margin-bottom:10px"},"Every action passes a policy gate. 'Off' is the kill switch."),
+   h("div",{class:"field"},h("label",{},"Mode"),sel([["off","Off - no proposals"],["suggest","Suggest only"],["assisted","Assisted - an admin approves every action"],["auto_low","Auto for low-risk, reversible actions"]],cfg.autonomy,(v,e)=>put({autonomy:v},e))),
+   h("div",{class:"field"},h("label",{},"Where actions run"),sel([["simulation","Simulation (safe)"],["collector","Real - via the collector, human-approved"]],cfg.actuator,(v,e)=>put({actuator:v},e))),
+   h("div",{class:"sm mu"},ac.mode=="collector"?(ac.online?"Collector connected · can do: "+(ac.capabilities.join(", ")||"nothing declared"):"Collector not connected - real actions are refused."):"Actions are simulated; nothing real changes."));
+  const mrows=mw.filter(w=>w.status!="ended"&&w.status!="cancelled");
+  const nodeSel=h("select",{"aria-label":"Node"},h("option",{value:""},"Whole tenant"),...Object.values(S.topo).map(n=>h("option",{value:n.label},n.label))),mins=h("input",{type:"number",value:30,min:1,"aria-label":"Minutes"}),why=h("input",{placeholder:"Reason","aria-label":"Reason"});
+  const maint=box("Maintenance windows",h("div",{class:"sm mu",style:"margin-bottom:8px"},"Planned work does not open incidents or page anyone."),
+   ...(mrows.length?mrows.map(w=>h("div",{class:"row"},pill(w.status=="active"?"warn":"low",w.status),h("div",{class:"sp"},h("b",{},w.label)," ",h("span",{class:"mu sm"},w.reason||"")),h("span",{class:"sm mu"},clock(w.start_ts)+"-"+clock(w.end_ts)+" · "+w.suppressed+" suppressed"),isAdmin()?h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api("/api/maintenance/"+w.id,"DELETE"),"Window cancelled")},"Cancel"):null)):[h("div",{class:"sm mu"},"None planned.")]),
+   isAdmin()?h("div",{class:"inl",style:"margin-top:12px"},nodeSel,mins,why,h("button",{class:"btn pri",onclick:e=>act(e.target,()=>api("/api/maintenance","POST",{node:nodeSel.value,minutes:+mins.value,reason:why.value}),"Window started")},"Start window")):null);
+  const hooks=box("Notifications",...(wh.hooks&&wh.hooks.length?wh.hooks.map(k=>h("div",{class:"row"},h("div",{class:"sp"},h("b",{},k.name)," ",h("span",{class:"mu sm"},k.host)),h("span",{class:"sm mu"},(k.events||[]).join(", ")),isAdmin()?h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api(`/api/webhooks/${encodeURIComponent(k.name)}/test`,"POST",{}),"Test sent")},"Send test"):null)):[empty("No webhooks configured","Signed webhooks are defined in contracts/webhooks.yaml.")]));
+  const rl=box("All fixes",...(S.rem.length?S.rem.slice(0,12).map(r=>h("div",{class:"row"},h("span",{class:"sp"},`REM-${r.id} · ${r.action.replace(/_/g," ")} on ${lab(r.node)}`),h("span",{class:"sm mu"},r.status.replace(/_/g," ")),h("a",{href:"#/incidents/"+r.incident_id,class:"sm"},"view"))):[h("div",{class:"sm mu"},"No fixes yet.")]));
+  root.replaceChildren(h("h1",{class:"pg"},"Operations"),h("div",{class:"sub"},"How much the platform may do on its own, planned work, and notifications."),h("div",{class:"grid g2"},h("div",{},aut,hooks),h("div",{},maint,rl)))}).catch(e=>root.replaceChildren(h("div",{class:"err"},e.message)));return root};
+/* settings */
+let setTab="people";
+VIEWS.settings=()=>{hold=1;const body=h("div",{}),bar=h("div",{class:"tabs",role:"tablist"}),tabs=[["people","People"],["keys","Collector keys"],["share","Share links"],["audit","Audit trail"],["account","My account"]];
+ const draw=async()=>{bar.replaceChildren(...tabs.map(([k,t])=>h("button",{class:setTab==k?"on":"",role:"tab","aria-selected":setTab==k,onclick:()=>{setTab=k;draw()}},t)));body.replaceChildren(...skel());
+  try{body.replaceChildren(await TAB[setTab]())}catch(e){body.replaceChildren(h("div",{class:"err"},e.message))}};
+ TABSW=k=>{setTab=k;draw()};draw();return h("div",{},h("h1",{class:"pg"},"Settings"),h("div",{class:"sub"},"People, keys, sharing and the audit trail."),bar,body)};
+let TABSW=null,LASTLINK=null;
+const TAB={
+ async people(){if(!isAdmin())return empty("Admins only");const us=await api("/api/users");const u=h("input",{placeholder:"username","aria-label":"Username"}),p=h("input",{type:"password",placeholder:"password (12+ chars)","aria-label":"Password"}),r=h("select",{"aria-label":"Role"},h("option",{value:"viewer"},"Viewer"),h("option",{value:"admin"},"Admin"));
+  return box("People",...us.map(x=>h("div",{class:"row"},h("span",{class:"sp"},h("b",{},x.username)),pill(x.role=="admin"?"warn":"low",x.role),x.disabled?pill("low","disabled"):(x.username!=ME.username?h("button",{class:"btn sm bad",onclick:e=>{if(confirm("Disable "+x.username+"? They are signed out immediately."))act(e.target,()=>api("/api/users/"+encodeURIComponent(x.username),"DELETE"),"Disabled").then(()=>TABSW("people"))}},"Disable"):null))),
+   h("div",{class:"inl",style:"margin-top:14px"},u,p,r,h("button",{class:"btn pri",onclick:e=>act(e.target,()=>api("/api/users","POST",{username:u.value.trim(),password:p.value,role:r.value}),"User created").then(()=>TABSW("people"))},"Add user")))},
+ async keys(){if(!isAdmin())return empty("Admins only");const ks=await api("/api/keys"),out=h("div",{});
+  return box("Collector keys",h("div",{class:"sm mu",style:"margin-bottom:10px"},"Rotating issues a new key; the old one keeps working for a short grace period so collectors can switch."),...ks.map(k=>h("div",{class:"row"},h("code",{class:"sp"},k.key_id),h("span",{class:"mu sm"},k.label||""),pill(k.status=="active"?"ok":"low",k.status),k.status=="active"&&ks.filter(x=>x.status=="active").length>1?h("button",{class:"btn sm bad",onclick:e=>{if(confirm("Revoke "+k.key_id+"? Collectors using it stop being accepted."))act(e.target,()=>api("/api/keys/"+k.key_id,"DELETE"),"Revoked").then(()=>TABSW("keys"))}},"Revoke"):null)),
+   h("div",{style:"margin-top:12px"},h("button",{class:"btn pri",onclick:e=>{if(confirm("Rotate the collector key now?"))act(e.target,async()=>{const r=await api("/api/keys/rotate","POST",{});out.replaceChildren(h("div",{class:"card",style:"border-color:var(--warn)"},h("b",{},"New key - shown once. Copy it now."),h("pre",{class:"code"},r.key||r.api_key||JSON.stringify(r)),h("button",{class:"btn sm",onclick:()=>copy(r.key||r.api_key||"")},"Copy"),h("div",{class:"sm mu",style:"margin-top:6px"},r.note||"")))})}},"Rotate key")),out)},
+ async share(){if(!isAdmin())return empty("Admins only");const L=await api("/api/shares"),out=h("div",{}),ll=LASTLINK;LASTLINK=null;if(ll)out.append(h("div",{class:"card",style:"border-color:var(--warn);margin-top:12px"},h("b",{},"Status page link - shown once"),h("pre",{class:"code"},ll.u),h("button",{class:"btn sm",onclick:()=>copy(ll.u)},"Copy"),h("a",{class:"btn sm",href:ll.path,target:"_blank",rel:"noopener",style:"margin-left:6px"},"Open")));const lbl=h("input",{placeholder:"Label, e.g. Customer status page","aria-label":"Label"}),ttl=h("select",{"aria-label":"Valid for"},...[[24,"1 day"],[168,"7 days"],[720,"30 days"],[2160,"90 days"]].map(([v,t])=>h("option",{value:v,selected:v==168},t)));
+  return box("Read-only share links",h("div",{class:"sm mu",style:"margin-bottom:10px"},"A status page for people without a login. Shows component health and open incidents only - no metrics, users or identifiers. Expires and can be revoked."),
+   ...(L.length?L.map(l=>h("div",{class:"row"},pill(l.status=="active"?"ok":"low",l.status),h("div",{class:"sp"},h("b",{},l.kind=="status"?"Status page":"Incident #"+l.target)," ",h("span",{class:"mu sm"},l.label||"")),h("span",{class:"sm mu"},`${l.views} views · expires ${full(l.expires_ts)}`),l.status=="active"?h("button",{class:"btn sm bad",onclick:e=>act(e.target,()=>api("/api/shares/"+l.id,"DELETE"),"Revoked").then(()=>TABSW("share"))},"Revoke"):null)):[h("div",{class:"sm mu"},"No links yet.")]),
+   h("div",{class:"inl",style:"margin-top:14px"},lbl,ttl,h("button",{class:"btn pri",onclick:e=>act(e.target,async()=>{const r=await api("/api/shares","POST",{kind:"status",label:lbl.value,ttl_h:+ttl.value}),u=location.origin+r.path;LASTLINK={u,path:r.path};TABSW("share")},"Link created")},"Create status link")),out)},
+ async audit(){const [rows,ver]=await Promise.all([api("/api/audit?limit=60"),api("/api/audit/verify").catch(()=>null)]);
+  return box("Audit trail",ver?h("div",{class:"row",style:"padding-top:0"},pill(ver.ok?"ok":"bad",ver.ok?"chain verified":"CHAIN BROKEN"),h("span",{class:"sm mu"},`${ver.rows} entries, each hash-linked to the previous one`)):null,
+   h("table",{},h("thead",{},h("tr",{},...["Time","Who","What","Detail"].map(t=>h("th",{},t)))),h("tbody",{},...rows.map(r=>h("tr",{},h("td",{class:"sm mu"},full(r.ts)),h("td",{},r.actor),h("td",{},r.action.replace(/_/g," ")),h("td",{class:"sm mu mono"},JSON.stringify(r.detail).slice(0,90)))))))},
+ async account(){const o=h("input",{type:"password",placeholder:"current password","aria-label":"Current password"}),n=h("input",{type:"password",placeholder:"new password (12+ chars)","aria-label":"New password"});
+  return box("My account",h("div",{class:"row",style:"padding-top:0"},h("b",{class:"sp"},ME.username),pill("low",ME.role)),h("div",{class:"inl",style:"margin-top:12px"},o,n,h("button",{class:"btn pri",onclick:e=>act(e.target,async()=>{await api("/api/password","POST",{old:o.value,new:n.value});toast("Password changed - sign in again","ok");setTimeout(()=>signout(),900)})},"Change password")),h("div",{class:"sm mu",style:"margin-top:8px"},"Changing it signs out every session."))}};
+/* setup wizard */
+VIEWS.setup=()=>{hold=1;const c=S.cols[0],st=h("div",{class:"banner",style:"--c:var(--warn)"},h("div",{},h("div",{class:"t"},"Waiting for the first collector…"),h("div",{class:"mu"},"This page checks automatically.")));
+ const tid=S.fleet.tenant_id,cid=c?c.collector_id:"<collector id>",short=tid.split("-").pop().toUpperCase();
+ const cmd=`TENANT=${tid} \\\nSAAS_URL=${location.origin}/ingest \\\nKEY_${short}=<the key from your SaaS .env> \\\nPSEUDO_KEY=<a secret that stays on your side> \\\npython3 -m collector.main`;
+ const poll=async()=>{if(!document.body.contains(st)&&ROUTE!="setup")return;try{await refresh();hold=1}catch(e){}const ok=S.cols.some(x=>!x.offline)&&S.fleet.nodes.length;
+  st.replaceChildren(h("div",{},h("div",{class:"t"},ok?"Connected ✓":"Waiting for the first collector…"),h("div",{class:"mu"},ok?`${S.fleet.nodes.length} nodes are reporting. You are done.`:"This page checks automatically.")));st.style.setProperty("--c",ok?"var(--ok)":"var(--warn)");if(!ok&&ROUTE=="setup")setTimeout(poll,4000)};setTimeout(poll,2500);
+ const step=(n,t,...k)=>h("div",{class:"card"},h("h2",{},`Step ${n}`),h("b",{},t),...k);
+ return h("div",{},h("h1",{class:"pg"},"Connect a collector"),h("div",{class:"sub"},"The collector runs in your network, strips secrets locally, and sends only allow-listed fields."),st,
+  step(1,"Get your tenant key",h("p",{class:"mu"},"The operator generates it with ",h("code",{},"python3 tools/ctl.py init"),". Keep it on the collector machine only; it is never shown here. Lost it? Rotate in Settings → Collector keys.")),
+  step(2,"Start the collector",h("pre",{class:"code"},cmd),h("button",{class:"btn sm",onclick:()=>copy(cmd)},"Copy"),h("p",{class:"sm mu"},`Your region is ${S.fleet.region.toUpperCase()}; data never leaves it. For an https SaaS, set CA_BUNDLE if you use a private CA.`)),
+  step(3,"Watch it connect",h("p",{class:"mu"},"The banner above turns green when data arrives. Then open the "),h("a",{href:"#/overview"},"Overview"),"."))};
+/* command palette */
+let PI=0,PL=[];
+function items(q){q=q.trim().toLowerCase();const A=[];const pg=[["overview","Overview"],["incidents","Incidents"],["fleet","Fleet"],["ask","Ask"],["ops","Operations"],["settings","Settings"],["setup","Connect a collector"]];
+ pg.forEach(([k,t])=>A.push({t:"Go to "+t,s:"page",f:()=>go(k)}));Object.entries(S.topo).forEach(([id,n])=>A.push({t:"Node "+n.label,s:nodeState(id).toLowerCase(),f:()=>go("fleet")}));
+ S.inc.slice(0,30).forEach(i=>A.push({t:`${i.ref} ${i.title}`,s:i.status,f:()=>go("incidents/"+i.id)}));
+ A.push({t:"Open engineering tracker",s:"/tracker",f:()=>{location.href="/tracker"}},{t:"Open proof board",s:"/demo",f:()=>{location.href="/demo"}},{t:"Toggle light / dark",s:"theme",f:()=>$("theme").click()},{t:"Sign out",s:"",f:()=>signout()});
+ const r=q?A.filter(a=>a.t.toLowerCase().includes(q)):A.slice(0,9);if(q.length>2)r.push({t:"Ask: "+q,s:"ask the platform",f:()=>{askBox=q;CHAT.length=0;hold=0;go("ask");if(ROUTE=="ask")render()}});return r.slice(0,10)}
+function pal(open){$("pm").classList.toggle("on",open);if(open){$("pi").value="";drawP();$("pi").focus()}}
+function drawP(){PL=items($("pi").value);PI=Math.min(PI,PL.length-1);$("pl").replaceChildren(...PL.map((a,i)=>h("li",{class:i==PI?"sel":"",onclick:()=>{pal(false);a.f()}},a.t,h("span",{class:"mu sm"},a.s))))}
+$("pi").oninput=()=>{PI=0;drawP()};$("srch").onclick=()=>pal(true);$("pm").onclick=e=>{if(e.target==$("pm"))pal(false)};
+$("pi").onkeydown=e=>{if(e.key=="ArrowDown"){PI=Math.min(PI+1,PL.length-1);drawP();e.preventDefault()}else if(e.key=="ArrowUp"){PI=Math.max(PI-1,0);drawP();e.preventDefault()}else if(e.key=="Enter"&&PL[PI]){pal(false);PL[PI].f()}else if(e.key=="Escape")pal(false)};
+let gk=0;addEventListener("keydown",e=>{if(!ME)return;const typing=/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName||"");
+ if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()=="k"){e.preventDefault();pal(!$("pm").classList.contains("on"));return}
+ if(typing||e.metaKey||e.ctrlKey||e.altKey)return;if(e.key=="/"){e.preventDefault();pal(true);return}
+ if(e.key=="g"){gk=Date.now();return}if(Date.now()-gk<900){const m={o:"overview",i:"incidents",f:"fleet",a:"ask",p:"ops",s:"settings"}[e.key];if(m){gk=0;go(m)}}
+ if(e.key=="?")toast("Shortcuts: ⌘K or / search · g then o i f a p s to jump","ok")});
+/* boot */
+async function boot(){if(!T)return signout();
+ try{ME=await api("/api/me");$("login").classList.remove("on");$("app").classList.add("on");ROUTE=location.hash.slice(2)||"overview";$("view").replaceChildren(...skel());await refresh();connect();
+  if(!S.fleet.nodes.length&&isAdmin()&&!location.hash)go("setup")}catch(e){if(T)toast(e.message,"bad")}}
+setInterval(()=>{if(T&&ME&&!document.hidden)refresh()},20000);document.addEventListener("visibilitychange",()=>{if(!document.hidden&&T&&ME)refresh()});
+boot();
+</script></body></html>
