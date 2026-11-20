@@ -40,6 +40,9 @@ dialog{background:var(--card);color:var(--t);border:1px solid var(--line);border
 
 
 <div class="sec" id="s-inc">
+<div class="card" style="margin-bottom:16px"><h2>ASK THE PLATFORM <span class="small">(rules over this tenant's own records; no model, no guessing)</span></h2>
+<div style="display:flex;gap:8px"><input id="ask-q" maxlength="300" placeholder="e.g. Why did db-01 fail?  What should I do about INC-1?  How is app-01?" style="flex:1"><button id="ask-go">Ask</button></div>
+<div id="ask-out" style="margin-top:10px"></div></div>
 <div class="grid g4" style="margin-bottom:16px"><div class="card"><h2>OPEN INCIDENTS</h2><div class="big" id="i-open">-</div><div class="small" id="i-sub"></div></div>
 <div class="card"><h2>ALERTS FOLDED INTO INCIDENTS</h2><div class="big" id="i-fold">-</div><div class="small" id="i-fold2"></div></div>
 <div class="card"><h2>DETECTION LAG (MEDIAN)</h2><div class="big" id="i-lag">-</div><div class="small">onset to anomaly, measured</div></div>
@@ -84,6 +87,13 @@ let T=null,ROLE="viewer",TAB="track";const $=id=>document.getElementById(id);con
 const f=(x,d=2)=>x==null?"-":Number(x).toFixed(d);const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ago=t=>{const s=Date.now()/1000-t;return s<90?Math.round(s)+" s":s<5400?Math.round(s/60)+" min":Math.round(s/3600)+" h"};
 async function api(p,o){const r=await fetch(p,Object.assign({headers:H()},o));if(r.status==401){T=null;location.reload()}const j=await r.json().catch(()=>({}));if(!r.ok&&!o)return j.detail?{error:j.detail}:{error:r.status};return j}
+async function ask(q){if(!q.trim())return;$("ask-out").innerHTML='<div class="small">…</div>';const r=await fetch("/api/ask",{method:"POST",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify({question:q})});const j=await r.json().catch(()=>({}));
+ if(!r.ok){$("ask-out").innerHTML='<div class="bad">'+esc(j.detail||r.status)+'</div>';return}
+ const cites=(j.cites||[]).map(c=>c.type==="incident"?`<a href="#" class="mono" data-inc="${c.id}">${esc(c.ref)}</a>`:`<span class="mono">${esc(c.ref||c.label||c.type+" "+c.id)}</span>`).join(" · ");
+ $("ask-out").innerHTML=`<div style="font-size:15px;line-height:1.5">${esc(j.answer)}</div>${cites?`<div class="small" style="margin-top:6px">Based on: ${cites}</div>`:""}<div class="small" style="margin-top:6px">${(j.followups||[]).map(x=>`<a href="#" data-q="${esc(x)}">${esc(x)}</a>`).join(" · ")}</div>`;
+ $("ask-out").querySelectorAll("a[data-q]").forEach(a=>a.onclick=e=>{e.preventDefault();$("ask-q").value=a.dataset.q;ask(a.dataset.q)});
+ $("ask-out").querySelectorAll("a[data-inc]").forEach(a=>a.onclick=e=>{e.preventDefault();$("ask-q").value="Why did INC-"+a.dataset.inc+" happen?";ask($("ask-q").value)})}
+$("ask-go").onclick=()=>ask($("ask-q").value);$("ask-q").onkeydown=e=>{if(e.key==="Enter")ask($("ask-q").value)};
 async function mut(m,p,b){const r=await fetch(p,{method:m,headers:{...H(),"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)alert(j.detail||r.status);return r.ok?j:null}
 $("go").onclick=async()=>{const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("u").value,password:$("p").value})});
  if(!r.ok){$("err").textContent=(await r.json()).detail;return}const j=await r.json();T=j.token;ROLE=j.role;$("who").textContent=j.tenant_id+" · region "+j.region.toUpperCase()+" · "+j.username+" ("+j.role+")";

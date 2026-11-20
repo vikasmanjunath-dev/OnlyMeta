@@ -237,7 +237,7 @@ def drill():
         print("[2c] P4: Proof Board evidence")
         sb, pa = f"http://127.0.0.1:{st.saas_port}", f"http://127.0.0.1:{st.ports['alpha']}"
         page = urllib.request.urlopen(f"{sb}/demo", timeout=10).read().decode()
-        check("/demo serves the Proof Board (6 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated", "Dependencies are learned", "Many small deviations")) and "tenant-alpha" not in page)
+        check("/demo serves the Proof Board (7 proofs, no data in the page)", all(k in page for k in ("A secret never leaves", "A network cut loses nothing", "AIOps names the root cause", "Tenants and regions are isolated", "Dependencies are learned", "Many small deviations", "Ask the platform")) and "tenant-alpha" not in page)
         cx = {"X-Chaos": "1", "Origin": sb}
         ev = http("POST", f"{pa}/api/chaos/scenario/secret", None, headers=cx)
         check("secret scenario returns outbound evidence with 0 credentials", ev["evidence"] and all(e["secrets_in_outbound"] == 0 for e in ev["evidence"]) and not any(x.decode() in json.dumps(ev) for x in FAKE_SECRETS), f"{len(ev['evidence'])} payloads")
@@ -273,6 +273,15 @@ def drill():
         check("only an admin can accept a learned edge (viewer 403)", not vok)
         lb = http("GET", f"{sb}/api/aiops/topology/learned", None, st.login("beta", "admin"))
         check("beta (EU) learns only from its own nodes", not ({n for e in lb["edges"] for n in (e["up"], e["dep"])} & {n for e in lt["edges"] for n in (e["up"], e["dep"])}), f"beta {len(lb['edges'])} edges, alpha {len(lt['edges'])}")
+
+        print("[2e] P7: ask the platform")
+        ask = lambda tok, q: http("POST", f"{sb}/api/ask", {"question": q}, tok)  # noqa: E731
+        opn = http("GET", f"{sb}/api/incidents?limit=20", None, ta)
+        a1, a2 = ask(ta, "What is wrong right now?"), ask(ta, "Who is the CEO of Google?")
+        check("ask: answers cite real incidents of this tenant", a1["intent"] == "open" and all(any(i["id"] == c["id"] for i in opn) for c in a1["cites"] if c["type"] == "incident"), a1["answer"][:90])
+        check("ask: an unanswerable question gets no facts and no citations", a2["intent"] == "unsupported" and not a2["cites"] and not a2["facts"])
+        ab = ask(st.login("beta", "admin"), "Why did db-01 fail?")
+        check("ask: beta cannot reach alpha's nodes or incidents through questions", ab["intent"] == "unknown_node" and not ab["cites"])
 
         print("[3] crash recovery (kill -9)")
         before = st.status("alpha")["sent"]
@@ -364,7 +373,7 @@ def preflight(fix=False, saas="http://127.0.0.1:8000", alpha="http://127.0.0.1:8
 
 
 def boardcheck():
-    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all six proofs."""
+    """Drives the real /demo page in headless Chrome (Playwright) on a throw-away stack: healthy feed, real clock, all seven proofs."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -389,7 +398,7 @@ def boardcheck():
             pg.click("#all")
             pg.wait_for_function("document.querySelector('#all').disabled===false", timeout=300000)
             pg.wait_for_timeout(500)
-            verdicts = pg.evaluate("[1,2,3,4,5,6].map(n=>document.querySelector('#p'+n+' .v').textContent)")
+            verdicts = pg.evaluate("[1,2,3,4,5,6,7].map(n=>document.querySelector('#p'+n+' .v').textContent)")
             bad = pg.evaluate("[...document.querySelectorAll('.steps li.bad')].map(l=>l.textContent)")
             pg.screenshot(path=str(tmp / "board.png"), full_page=True)
             b.close()
