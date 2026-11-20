@@ -9,6 +9,7 @@ from typing import Optional
 
 from saas.aiops.baseline import METRICS, Detector, Trend, describe, signal_weights
 from saas.aiops.correlate import COLLECTOR_PREFIX, SECURITY_PREFIX, Graph
+from saas.aiops import learn as learner
 from saas.aiops.incidents import IncidentManager
 from saas.aiops.maintenance import Maintenance
 from saas.aiops.webhooks import Webhooks
@@ -46,8 +47,70 @@ class AIOps:
 
     def graph(self, tenant: str) -> Graph:
         if tenant not in self._graphs:
-            self._graphs[tenant] = Graph(topology(tenant))
+            topo = topology(tenant)
+            for r in self.eng.store_of(tenant).q("SELECT up, dep FROM learned_edges WHERE tenant_id=? AND decision='accepted'", (tenant,)):   # admin-approved learned edges
+                for n in (r["up"], r["dep"]):
+                    topo.setdefault(n, {"label": n[:12], "depends_on": []})
+                if r["up"] not in topo[r["dep"]]["depends_on"]:
+                    topo[r["dep"]]["depends_on"].append(r["up"])
+            self._graphs[tenant] = Graph(topo)
         return self._graphs[tenant]
+
+    # ---------------------------------------------------------------- learned topology
+    def learned_topology(self, tenant: str, now: float) -> dict:
+        """Suggested dependency edges with their evidence, each marked with the admin's decision (if any)."""
+        st, cfg = self.eng.store_of(tenant), learner.settings(self.th["aiops"].get("learn"))
+        rows = st.q("SELECT node,event_ts,cpu,mem,latency_ms,packet_loss,bandwidth_mbps FROM events WHERE tenant_id=? AND event_ts>=? ORDER BY node,event_ts LIMIT 300000",
+                    (tenant, now - cfg["lookback_s"]))
+        series: dict = {}
+        for r in rows:
+            series.setdefault(r["node"], []).append(r)
+        topo = topology(tenant)
+        out = learner.learn(series, topo, cfg, self.det.sigma_eff)
+        dec = {(r["up"], r["dep"]): r for r in st.q("SELECT up,dep,decision,actor,ts FROM learned_edges WHERE tenant_id=?", (tenant,))}
+        g = self.graph(tenant)
+        for e in out["edges"]:
+            d = dec.get((e["up"], e["dep"]))
+            e["decision"], e["decided_by"], e["decided_ts"] = (d["decision"], d["actor"], d["ts"]) if d else (None, None, None)
+            e["up_label"], e["dep_label"] = g.name(e["up"]), g.name(e["dep"])
+        for u in out["undirected"]:
+            u["labels"] = [g.name(n) for n in u["nodes"]]
+        for u in out["declared"]:
+            u["up_label"], u["dep_label"] = g.name(u["up"]), g.name(u["dep"])
+        out["episodes"] = {g.name(n): c for n, c in out["episodes"].items()}
+        out["nodes"] = len(series)
+        out["applied"] = [{"up": u, "dep": d, "up_label": g.name(u), "dep_label": g.name(d), "actor": r["actor"], "ts": r["ts"]} for (u, d), r in sorted(dec.items()) if r["decision"] == "accepted"]
+        return out
+
+    def decide_edge(self, tenant: str, up: str, dep: str, decision: str, actor: str, now: float, ip: str = "") -> dict:
+        """accept / reject / revoke one learned edge. Only an accepted edge changes root-cause analysis."""
+        st = self.eng.store_of(tenant)
+        if decision not in ("accept", "reject", "revoke"):
+            raise ValueError("decision must be accept, reject or revoke")
+        for n in (up, dep):
+            if not st.one("SELECT 1 x FROM node_state WHERE tenant_id=? AND node=?", (tenant, n)):
+                raise LookupError("unknown node")
+        ev = None
+        if decision == "accept":
+            declared = {n: set(v["depends_on"]) for n, v in topology(tenant).items()}
+            for r in st.q("SELECT up,dep FROM learned_edges WHERE tenant_id=? AND decision='accepted'", (tenant,)):
+                declared.setdefault(r["dep"], set()).add(r["up"])
+            if learner.would_cycle(declared, up, dep):
+                raise ValueError("that edge would create a dependency cycle")
+            ev = next((e for e in self.learned_topology(tenant, now)["edges"] if e["up"] == up and e["dep"] == dep), None)
+            if not ev:
+                raise ValueError("no current evidence for that edge")
+        with st.tx() as c:
+            if decision == "revoke":
+                c.execute("DELETE FROM learned_edges WHERE tenant_id=? AND up=? AND dep=?", (tenant, up, dep))
+            else:
+                c.execute("INSERT OR REPLACE INTO learned_edges(tenant_id,up,dep,decision,actor,ts,evidence) VALUES(?,?,?,?,?,?,?)",
+                          (tenant, up, dep, "accepted" if decision == "accept" else "rejected", actor, now,
+                           json.dumps({k: ev[k] for k in ("support", "forward", "reverse", "p", "lift", "lag_s", "status")}) if ev else None))
+        self._graphs.pop(tenant, None)                                     # next analysis uses the new map
+        g = self.graph(tenant)
+        self.maint.audit.record(tenant, actor, f"topology_edge_{decision}", {"up": g.name(up), "dep": g.name(dep)}, ip)
+        return {"up": up, "dep": dep, "decision": decision}
 
     # ---------------------------------------------------------------- hooks
     def analyse(self, tenant, sample, store):

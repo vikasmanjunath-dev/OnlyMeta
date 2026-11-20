@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS maintenance(id INTEGER PRIMARY KEY AUTOINCREMENT, ten
   created_by TEXT, created_ts REAL, cancelled INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS webhook_log(id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT, hook TEXT, event TEXT, delivery_id TEXT, ts REAL, ok INT,
   http_status INT, attempts INT, error TEXT);
+CREATE TABLE IF NOT EXISTS learned_edges(tenant_id TEXT, up TEXT, dep TEXT, decision TEXT, actor TEXT, ts REAL, evidence TEXT, PRIMARY KEY(tenant_id, up, dep));
 CREATE TABLE IF NOT EXISTS aiops_config(tenant_id TEXT PRIMARY KEY, doc TEXT, updated_ts REAL);
 CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY, tenant_id TEXT, role TEXT, salt BLOB, hash BLOB, disabled INT DEFAULT 0, created_ts REAL);
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, tenant_id TEXT, username TEXT, role TEXT, exp REAL, created_ts REAL);

@@ -296,6 +296,19 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
     def aiops_rebuild(request: Request, u: dict = Depends(admin)):
         return {"nodes": ai.rebuild_baselines(u["tenant"], u["user"], time.time(), ip_of(request))}
 
+    @app.get("/api/aiops/topology/learned")
+    def aiops_learned(u: dict = Depends(user)):
+        return ai.learned_topology(u["tenant"], time.time())
+
+    @app.post("/api/aiops/topology/learned/decision")
+    def aiops_learned_decision(body: dict, request: Request, u: dict = Depends(admin)):
+        try:
+            return ai.decide_edge(u["tenant"], str(body.get("up", "")), str(body.get("dep", "")), str(body.get("decision", "")), u["user"], time.time(), ip_of(request))
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
     @app.get("/api/aiops/baselines/{node}")
     def aiops_baselines(node: str, u: dict = Depends(user)):
         if not eng.store_of(u["tenant"]).one("SELECT 1 x FROM node_state WHERE tenant_id=? AND node=?", (u["tenant"], node)):

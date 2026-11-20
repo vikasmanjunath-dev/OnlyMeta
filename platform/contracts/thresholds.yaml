@@ -67,4 +67,14 @@ aiops:
     size: 360                   # newest clean samples kept per bucket (30 min)
   slo: {mttd_s: 15, mttr_s: 300, noise_reduction_min_pct: 50}   # targets the SLO card is judged against
   security: {burst_n: 5, window_s: 60, clear_s: 90}              # rejected signed requests on one key id that make an incident
+  learn:                        # learned topology: edges suggested from which node deviates first, repeatedly (an admin accepts each one)
+    lookback_s: 21600           # history examined: 6 h
+    z: 4.0                      # robust |z| that counts as a deviation (median / MAD over the look-back)
+    min_run: 2                  # consecutive deviating samples that make an episode
+    window_s: 20                # episodes of two nodes closer than this are one co-occurrence
+    episode_gap_s: 60           # episodes closer than this are the same episode
+    tie_s: 2                    # onsets within this many seconds start 'at the same time' (direction unknowable)
+    min_support: 3              # ordered co-occurrences needed for an edge
+    max_p: 0.15                 # sign test: the order must be this unlikely to be chance
+    min_lift: 2.5               # co-occurrence must beat what two unrelated nodes would produce by this factor
   reopen_within_s: 300          # flap damping: the same root failing again within 5 min of resolving reopens that incident
