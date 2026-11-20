@@ -128,7 +128,7 @@ def anomaly_signals(verdicts: list) -> list:
 
 HEADLINE = {"cpu": "CPU saturation", "mem": "memory pressure", "latency_ms": "latency degradation", "packet_loss": "packet loss",
             "auth": "failed-login burst", "service": "service down", "stale": "node silent", "bandwidth_mbps": "bandwidth anomaly",
-            "collector_offline": "collector offline"}
+            "collector_offline": "collector offline", "joint": "unusual combination of metrics"}
 
 
 def primary_metric(signals: list) -> Optional[str]:
@@ -204,7 +204,7 @@ def narrate(ex: dict, graph: Graph, members: dict) -> str:
     pm = primary_metric(sig)
     what = HEADLINE.get(pm, "abnormal behaviour")
     first = next((s for s in sig if s["kind"] == "anomaly" and s["metric"] == pm), None)
-    ev = f" ({abs(first['z']):.1f}σ above its baseline)" if first else ""
+    ev = (" (no single metric out of range, jointly improbable)" if pm == "joint" else f" ({abs(first['z']):.1f}σ above its baseline)") if first else ""
     down = [c for c in ex["chain"] if c["role"] == "downstream"]
     t0 = members[root]["onset_ts"]
     if len(members) == 1:

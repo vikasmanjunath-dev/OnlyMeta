@@ -67,6 +67,17 @@ aiops:
     size: 360                   # newest clean samples kept per bucket (30 min)
   slo: {mttd_s: 15, mttr_s: 300, noise_reduction_min_pct: 50}   # targets the SLO card is judged against
   security: {burst_n: 5, window_s: 60, clear_s: 90}              # rejected signed requests on one key id that make an incident
+  joint:                        # multivariate detector: several metrics a little off, together improbable (Mahalanobis distance, chi-square limit)
+    enabled: true
+    alpha: 0.001                # false-alarm probability per sample under normal operation (0.001 or 0.01)
+    warmup: 40                  # clean samples before it judges
+    window: 180                 # newest clean samples used for the mean and covariance
+    confirm_k: 3                # must exceed the limit in K of the last N samples ...
+    confirm_n: 4
+    fast_mult: 2.0              # ... unless D2 is this many times the limit
+    clear_clean_samples: 3
+    level_shift_samples: 36     # sustained: the new combination is the new normal
+    equiv_sigma: 3.0            # the limit is reported as this many univariate sigmas, so root-cause strength is comparable
   learn:                        # learned topology: edges suggested from which node deviates first, repeatedly (an admin accepts each one)
     lookback_s: 21600           # history examined: 6 h
     z: 4.0                      # robust |z| that counts as a deviation (median / MAD over the look-back)

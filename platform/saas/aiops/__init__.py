@@ -10,6 +10,7 @@ from typing import Optional
 from saas.aiops.baseline import METRICS, Detector, Trend, describe, signal_weights
 from saas.aiops.correlate import COLLECTOR_PREFIX, SECURITY_PREFIX, Graph
 from saas.aiops import learn as learner
+from saas.aiops.multivar import JointDetector, describe_joint
 from saas.aiops.incidents import IncidentManager
 from saas.aiops.maintenance import Maintenance
 from saas.aiops.webhooks import Webhooks
@@ -34,6 +35,7 @@ class AIOps:
         self.draft_after = float(self.th["aiops"].get("draft_after_s", 8))
         self.maint = Maintenance(engine.store_of, audit)
         self.webhooks = Webhooks(ROOT / "contracts/webhooks.yaml", engine.store_of, audit, threaded)
+        self.joint = JointDetector(self.th, self.det.sigma_eff)
         self.inc = IncidentManager(self.th, bus, audit, engine.store_of, self.graph)
         self.inc.on_open.append(lambda t, i, ctx=None: self.webhooks.emit(t, "incident_opened", {"incident": self._wh(t, i)}))
         self.inc.on_resolve.append(lambda t, i: self.webhooks.emit(t, "incident_resolved", {"incident": self._wh(t, i)}))
@@ -124,6 +126,9 @@ class AIOps:
                 c.execute("UPDATE anomalies SET state='closed', closed_ts=?, detail='closed at restart (detector state is rebuilt)' WHERE tenant_id=? AND node=? AND state='open'",
                           (time.time(), tenant, node))
         self.det.ensure_seeded(tenant, node, loader)
+        if (tenant, node) not in self.joint.seeded:
+            self.joint.seeded.add((tenant, node))
+            self.joint.seed(tenant, node, loader())
         verdicts = self.det.observe(tenant, node, m, ts)
         wall, extra = time.time(), []
         st = self.det._ms(tenant, node)
@@ -146,6 +151,25 @@ class AIOps:
                 pass
             if v["open"] and METRICS[v["metric"]]["health"]:
                 extra.append(("FAIR", describe(v)))
+        jv = self.joint.observe(tenant, node, m, ts, uni_raw=any(v.get("raw") and v.get("warm") for v in verdicts), uni_open=any(v["open"] for v in verdicts))
+        if jv:
+            js = self.joint._st(tenant, node)
+            if jv["opened"]:
+                with store.tx() as c:
+                    cur = c.execute("INSERT INTO anomalies(tenant_id,node,metric,kind,onset_ts,detected_ts,value,mean,sigma,z,peak_z,replay,payload_id,detail) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                    (tenant, node, "joint", "multivariate", jv["onset_ts"], wall, jv["value"], jv["mean"], jv["sigma"], jv["z"], abs(jv["z"]), int(sample["is_replay"]), sample["payload_id"],
+                                     json.dumps({"contrib": jv["contrib"], "d2": jv["d2"], "threshold_d2": jv["threshold_d2"], "alpha": jv["alpha"]}, separators=(",", ":"))))
+                js.anomaly_id = cur.lastrowid
+                self.bus.publish(tenant, "anomaly", {"id": js.anomaly_id, "node": node, "label": self.graph(tenant).name(node), "metric": "joint", "z": jv["z"], "value": jv["value"],
+                                                     "baseline": jv["mean"], "state": "open", "ts": ts, "contrib": jv["contrib"]})
+            elif jv["closed"] and js.anomaly_id:
+                with store.tx() as c:
+                    c.execute("UPDATE anomalies SET state='closed', closed_ts=?, kind=? WHERE id=? AND tenant_id=?", (ts, "level_shift" if jv["level_shift"] else "multivariate", js.anomaly_id, tenant))
+                self.bus.publish(tenant, "anomaly", {"id": js.anomaly_id, "node": node, "metric": "joint", "state": "closed", "level_shift": jv["level_shift"], "ts": ts})
+                js.anomaly_id = None
+            if jv["open"]:
+                extra.append(("FAIR", describe_joint(jv)))
+            verdicts = verdicts + [jv]
         for metric in self.trend.limits:
             fc = self.trend.add(tenant, node, metric, ts, m[metric])
             node_i = self.insights.setdefault(tenant, {}).setdefault(node, {})
@@ -271,6 +295,7 @@ class AIOps:
         nodes = [r["node"] for r in self.eng.store_of(tenant).q("SELECT node FROM node_state WHERE tenant_id=?", (tenant,))]
         for n in nodes:
             self.det.forget(tenant, n)
+            self.joint.forget(tenant, n)
         self.maint.audit.record(tenant, actor, "baselines_rebuilt", {"nodes": len(nodes)}, ip)
         return len(nodes)
 
@@ -282,12 +307,17 @@ class AIOps:
         g = self.graph(tenant)
         rows = self.eng.store_of(tenant).q(sql + "ORDER BY id DESC LIMIT ?", args + [limit])
         for r in rows:
-            r["label"], r["metric_label"] = g.name(r["node"]), METRICS.get(r["metric"], {}).get("label", r["metric"])
+            r["label"], r["metric_label"] = g.name(r["node"]), ("metric pattern (joint)" if r["metric"] == "joint" else METRICS.get(r["metric"], {}).get("label", r["metric"]))
             r["detect_lag_s"] = round(r["detected_ts"] - r["onset_ts"], 2) if not r["replay"] and r["detected_ts"] >= r["onset_ts"] else None
         return rows
 
     def baselines(self, tenant: str, node: str) -> dict:
         return self.det.baseline(tenant, node)
+
+    def joint_baselines(self, tenant: str) -> dict:
+        """Per node: is the multivariate detector warm, and what limit does it use."""
+        g = self.graph(tenant)
+        return {r["node"]: {"label": g.name(r["node"]), **self.joint.baseline(tenant, r["node"])} for r in self.eng.store_of(tenant).q("SELECT node FROM node_state WHERE tenant_id=?", (tenant,))}
 
     def summary(self, tenant: str, now: float, window_s: float = 3600) -> dict:
         st = self.eng.store_of(tenant)

@@ -309,6 +309,10 @@ def create_app(settings: Optional[Settings] = None, run_background: bool = True)
         except ValueError as e:
             raise HTTPException(409, str(e))
 
+    @app.get("/api/aiops/joint")
+    def aiops_joint(u: dict = Depends(user)):
+        return ai.joint_baselines(u["tenant"])
+
     @app.get("/api/aiops/baselines/{node}")
     def aiops_baselines(node: str, u: dict = Depends(user)):
         if not eng.store_of(u["tenant"]).one("SELECT 1 x FROM node_state WHERE tenant_id=? AND node=?", (u["tenant"], node)):
