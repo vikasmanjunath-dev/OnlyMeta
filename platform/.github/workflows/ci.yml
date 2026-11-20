@@ -1,0 +1,21 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: {python: ["3.11", "3.13"]}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "${{ matrix.python }}", cache: pip}
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: end-to-end drill and TLS check
+        run: |
+          python tools/demo.py drill
+          python tools/demo.py tlscheck
+      - name: ops smoke
+        run: |
+          CICADA_ENV=$RUNNER_TEMP/e.env SAAS_DATA=$RUNNER_TEMP/d python tools/ctl.py init
+          CICADA_ENV=$RUNNER_TEMP/e.env SAAS_DATA=$RUNNER_TEMP/d python tools/ctl.py doctor

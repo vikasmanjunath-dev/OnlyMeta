@@ -14,6 +14,8 @@ def main():
     ap.add_argument("--certfile")
     ap.add_argument("--keyfile")
     a = ap.parse_args()
+    from saas import envfile
+    envfile.load()                                   # .env fills gaps; real env vars win
     uvicorn.run(create_app(), host=a.host, port=a.port, log_level="warning", ssl_certfile=a.certfile, ssl_keyfile=a.keyfile)
 
 

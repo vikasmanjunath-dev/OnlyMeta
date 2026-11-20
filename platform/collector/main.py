@@ -197,6 +197,10 @@ def main():
     ap.add_argument("--port", type=int, default=8001)
     ap.add_argument("--host", default="127.0.0.1", help="keep 127.0.0.1: raw-data endpoints are local only (containers: 0.0.0.0 + a loopback-only port map)")
     a = ap.parse_args()
+    from saas import envfile
+    envfile.load()                                   # .env fills gaps; real env vars win
+    global CHAOS_ORIGINS
+    CHAOS_ORIGINS = {o.strip() for o in os.getenv("CHAOS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000").split(",") if o.strip()}
     uvicorn.run(create_app(), host=a.host, port=a.port, log_level="warning")
 
 

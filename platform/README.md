@@ -178,3 +178,6 @@ Measured here (in-process, no network, one laptop-class core): 10,000 payloads a
 - **Core demo**: the Proof Board has **Run core 4** (key **C**: proofs 1, 3, 2, 4, about 65 s) next to **Run all** (key **R**, about 5 min), and every card shows its own duration. `boardcheck --core` and `boardcheck --tls` verify those paths in headless Chrome.
 - **`docs/evaluation_map.md`** maps every box on the evaluation sheet to where it is shown and what backs it, including what to do when the organiser's stream arrives.
 - **Limits**: the TLS certificate is a demo CA (production would use a real one; mTLS is roadmap); the Docker files are still untested here.
+
+## Operate it (P11)
+`make setup && make up` - generates secrets, starts SaaS + a collector per tenant. `ctl onboard/offboard/backup/restore/doctor`; see `docs/operations.md`.
