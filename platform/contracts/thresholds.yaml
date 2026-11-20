@@ -78,6 +78,8 @@ aiops:
     clear_clean_samples: 3
     level_shift_samples: 36     # sustained: the new combination is the new normal
     equiv_sigma: 3.0            # the limit is reported as this many univariate sigmas, so root-cause strength is comparable
+  counterfactual:               # did the action CAUSE the recovery? pre-action trend extrapolation vs what happened, with peer-node control
+    {min_pre: 4, min_post: 4, z: 2.5, run_slack_sigma: 3.0, control_frac: 0.5, max_pre_s: 90}
   learn:                        # learned topology: edges suggested from which node deviates first, repeatedly (an admin accepts each one)
     lookback_s: 21600           # history examined: 6 h
     z: 4.0                      # robust |z| that counts as a deviation (median / MAD over the look-back)

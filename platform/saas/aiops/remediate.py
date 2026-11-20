@@ -18,6 +18,7 @@ from typing import Optional
 
 import yaml
 
+from saas.aiops import counterfactual as cfx
 from saas.aiops.correlate import to_json
 from saas.health import RANK, classify
 
@@ -274,6 +275,8 @@ class Remediator:
             by[r["status"]] = by.get(r["status"], 0) + 1
         v = [x for x in ((json.loads(r["verdict"]) or {}).get("verdict") for r in rows if r["verdict"]) if x]
         return {"window_s": window_s, "total": len(rows), "by_status": by, "pending": by.get("pending_approval", 0),
+                "credited": sum(1 for r in rows if r["verdict"] and ((json.loads(r["verdict"]) or {}).get("attribution") or {}).get("verdict") == "caused"),
+                "not_credited": sum(1 for r in rows if r["verdict"] and ((json.loads(r["verdict"]) or {}).get("attribution") or {}).get("verdict") in ("coincident", "fleet_wide")),
                 "verified_improved": v.count("improved"), "verified_no_effect": v.count("no_effect"), "verified_worse": v.count("worse"),
                 "auto_executed": st.one("SELECT COUNT(*) n FROM remediation_events WHERE tenant_id=? AND event='executed' AND ts>=? AND detail LIKE '%\"auto\":true%'", (tenant, now - window_s))["n"],
                 "config": self.config(tenant)}
@@ -406,6 +409,32 @@ class Remediator:
         return self.get(tenant, rid)
 
     # ---------------------------------------------------------------- verify / rollback
+    COLS = {"cpu", "mem", "latency_ms", "packet_loss", "bandwidth_mbps"}
+
+    def attribution(self, tenant: str, r: dict, before: dict, metric: Optional[str], now: float) -> Optional[dict]:
+        """Counterfactual check (see counterfactual.py): would the metric have recovered without the action? None when it cannot be asked."""
+        t0 = before.get("event_ts")
+        if not metric or metric not in self.COLS or not t0:
+            return None
+        node, g = r["node"], self.graph_of(tenant)
+        bl = self.det.baseline(tenant, node).get(metric)
+        if not bl or not bl["warm"]:
+            return {**cfx.attribute([], [], 0.0, 1.0), "explain": "the metric has no warm baseline, so 'normal' is unknown"}
+        rows = self.store_of(tenant).q(f"SELECT node, event_ts, {metric} v FROM events WHERE tenant_id=? AND event_ts>=? AND event_ts<=? AND {metric} IS NOT NULL ORDER BY event_ts",
+                                       (tenant, t0 - 150, now + 5), )
+        by: dict = {}
+        for x in rows:
+            d = by.setdefault(x["node"], {"pre": [], "post": []})
+            d["pre" if x["event_ts"] <= t0 else "post"].append((x["event_ts"] - t0, x["v"]))
+        skip = {node} | (set(g.dependents(node)) if ACTIONS[r["action"]]["disruptive"] else set())
+        skip |= {x["node"] for x in self.store_of(tenant).q("SELECT DISTINCT node FROM remediations WHERE tenant_id=? AND id<>? AND executed_ts IS NOT NULL AND executed_ts>=?",
+                                                              (tenant, r["id"], now - 300))}       # a peer under treatment itself is not an untreated control
+        ctl = [{"label": g.name(n), **d} for n, d in by.items() if n not in skip]
+        mine = by.get(node, {"pre": [], "post": []})
+        out = cfx.attribute(mine["pre"], mine["post"], bl["mean"], bl["sigma_eff"], ctl, self.th["aiops"].get("counterfactual"))
+        out["metric"] = metric
+        return out
+
     def verify(self, tenant: str, rid: int, now: float) -> dict:
         r = self._fresh(tenant, rid)
         if r["status"] != "executed":
@@ -433,11 +462,15 @@ class Remediator:
                 verdict, note = "improved", "the node is healthier than before the action (observed; this does not prove the action caused it)"
             elif ra > rb or (frac is not None and frac <= -0.15):
                 verdict, note = "worse", "the node is in worse shape than before the action"
-        out = {**r["verdict"], "after": after, "verdict": verdict, "note": note, "excess_removed": frac, "verified_ts": now}
+        attr = self.attribution(tenant, r, before, metric, now) if verdict == "improved" else None
+        if attr:
+            note += {"caused": f" Counterfactual: {attr['explain']}.", "coincident": f" Counterfactual: {attr['explain']}.", "fleet_wide": f" Counterfactual: {attr['explain']}.",
+                     "inconclusive": f" Counterfactual: inconclusive ({attr['explain']})."}[attr["verdict"]]
+        out = {**r["verdict"], "after": after, "verdict": verdict, "note": note, "excess_removed": frac, "verified_ts": now, "attribution": attr}
         status = "verified" if verdict == "improved" else "failed_verification"
         with self.store_of(tenant).tx() as c:
             c.execute("UPDATE remediations SET status=?, verdict=? WHERE id=? AND tenant_id=?", (status, to_json(out), rid, tenant))
-        self._log(tenant, rid, "system", "verified", {"verdict": verdict, "excess_removed": frac, "state_before": before["state"], "state_after": after["state"]}, now, None, r["incident_id"])
+        self._log(tenant, rid, "system", "verified", {"verdict": verdict, "excess_removed": frac, "state_before": before["state"], "state_after": after["state"], "attribution": attr["verdict"] if attr else None}, now, None, r["incident_id"])
         self._publish(tenant, rid)
         if verdict == "worse" and r["reversible"] and self.config(tenant)["auto_rollback_on_worse"]:
             return self.rollback(tenant, rid, "system", now, reason="auto: verification found the node worse")
