@@ -16,7 +16,7 @@ If anything is amber at T-5, fix it then; do not discover it live. Re-run `prefl
 ## The five minutes
 | Time | Say | Do | The judge sees |
 |---|---|---|---|
-| 0:00 | "Two tiers. Raw data stays in the customer's network; the SaaS only ever sees a schema allow-list. We will prove seven claims live, on the real system." | Point at the **trust strip**: p95 vs the 10 s target, delivered counts, audit chain, fleet, noise, detectors | Live numbers, not slides |
+| 0:00 | "Two tiers. Raw data stays in the customer's network; the SaaS only ever sees a schema allow-list. We will prove eight claims live, on the real system." | Point at the **trust strip**: p95 vs the 10 s target, delivered counts, audit chain, fleet, noise, detectors | Live numbers, not slides |
 | 0:25 | "Claim 1: a secret never leaves." | Press **1** | Fake credentials highlighted on the RAW side; none in OUTBOUND; SaaS hash identical to the collector's |
 | 1:10 | "Claim 2: a network cut loses nothing." | Press **2**. Talk while it runs (below) | Timeline: collector OFFLINE, SaaS marks nodes stale at about +30 s, link back, outbox drained, ledger reconciled: 0 missing, 0 mismatched |
 | 2:20 | "Claim 3: it explains, not just alerts." | Press **3** | Incident with a named root (db-01), weighted explanation, z-scores against each node's own baseline, a fix with the twin's prediction |
@@ -25,8 +25,9 @@ If anything is amber at T-5, fix it then; do not discover it live. Re-run `prefl
 | 4:15 | "Claim 5: nobody wrote the dependency map for us, and it still finds it." | Press **5** (about 15 s) | Edges net-01 → db-01 → app-01 with ordered counts, p-values and lag; both declared dependencies confirmed; "start together" pairs listed with no guessed direction |
 | 4:35 | "Claim 6: it catches what no single threshold can." | Press **6**; talk through the next 30 s (below) | One anomaly, "metric pattern (joint)" on db-01; every metric's bar is green (inside its own ±3σ band); distance² above a chi-square limit |
 | 5:10 | "Claim 7: ask it in plain English; no model, so no invention." | Press **7** (about 10 s); then type one question live in the Tracker's Incidents tab | Answers name the incident, root cause and confidence, each cited; "weather in Paris" is declined; beta gets "unknown node" |
-| 5:40 | "Every proof is a re-runnable check, not a recording." | Point at **7/7** and the clock | `7/7` |
-| 5:50 | Close (below) | Open **/tracker** → Audit if asked | Hash-chained audit, SLO card |
+| 5:40 | "Claim 8: a real action, two keys, verified by telemetry." | Press **8** (about 90 s; talk over it with the Q&A above, or show the recorded timeline) | `improved`: CPU before → after; beta offers nothing |
+| 7:10 | "Every proof is a re-runnable check, not a recording." | Point at **8/8** and the clock | `8/8` |
+| 7:20 | Close (below) | Open **/tracker** → Audit if asked | Hash-chained audit, SLO card |
 
 **While proof 2 runs (about 45 s), say:** "The collector writes every payload to a local SQLite outbox before sending and only deletes it
 after the SaaS acknowledges. Each payload has one id minted once, so a retry after a crash is a duplicate the SaaS absorbs. The SaaS marks
@@ -59,8 +60,9 @@ synthetic, and benchmark numbers come from seeded synthetic faults."
 - **"Does it need a hand-written dependency map?"** No. It learns edges from which node deviates first, repeatedly, and shows the evidence (ordered count, sign-test p, lift over chance, lag). The declared map is only the reference it is compared against (confirmed / new / contradicts).
 - **"Order of failures is not causation."** Agreed, so a learned edge is a suggestion: nothing changes root-cause analysis until an admin accepts it (audited), edges that would create a cycle are refused, and nodes that start together get no direction at all.
 - **"Why not just lower the thresholds?"** Lower per-metric limits raise false alarms on every metric. The joint test keeps one probability (0.1 % per sample) across all five metrics, and it also catches a broken relationship between metrics (CPU up, latency flat) that no threshold sees.
+- **"Is the remediation real?"** Only when two people say so: the tenant admin sets the actuator to collector, and the customer's collector owner runs it with the actuator on (default off). The SaaS sends a signed, 60-second command; the collector re-verifies it, runs only what its own allow-list names, and reports back. Success is judged from the node's own telemetry afterwards, and a refused command aborts the action instead of pretending.
 - **"Why is the Q&A not an LLM?"** On purpose: it is a rules parser over the tenant's own records, so it is instant, offline, deterministic and cannot hallucinate or leak another tenant's data; every answer lists its citations. The trade-off is a fixed vocabulary, and it says so when it cannot parse a question.
 - **"Why synthetic data?"** The healthy feed and faults are generated locally so every anomaly on screen has a visible cause. The adapter is the only module that knows the input format.
 
 ## After the demo
-Press **Reset**. `python3 tools/demo.py boardcheck` re-runs all seven proofs in headless Chrome on a throw-away stack (about 4 min); `python3 tools/demo.py drill` runs the 38 independent checks.
+Press **Reset**. `python3 tools/demo.py boardcheck` re-runs all eight proofs in headless Chrome on a throw-away stack (about 4 min); `python3 tools/demo.py drill` runs the 41 independent checks.
