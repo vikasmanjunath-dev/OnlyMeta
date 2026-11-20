@@ -16,6 +16,7 @@ Root cause: among the abnormal members, a CANDIDATE has no abnormal dependency (
 Collector outage: nodes that went silent together are explained by a pseudo-node `collector:<id>`, not by the topology.
 Everything is derived from event times, so replayed or late data correlates by when things HAPPENED."""
 import json
+import math
 from collections import deque
 from typing import Optional
 
@@ -119,7 +120,8 @@ def anomaly_signals(verdicts: list) -> list:
     out = []
     for v in verdicts or []:
         if v.get("open") and v.get("z") is not None:
-            out.append({"kind": "anomaly", "metric": v["metric"], "z": round(v["z"], 2), "value": round(v["value"], 2), "baseline": round(v["mean"], 2),
+            z = v["z"] if abs(v["z"]) >= (v.get("peak_z") or 0) else math.copysign(v["peak_z"], v["z"])      # evidence is the PEAK of the run, not the sample the calm feed just sent
+            out.append({"kind": "anomaly", "metric": v["metric"], "z": round(z, 2), "current_z": round(v["z"], 2), "value": round(v["value"], 2), "baseline": round(v["mean"], 2),
                         "sigma": round(v["sigma"], 2), "onset_ts": v.get("onset_ts")})
     return out
 
