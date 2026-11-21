@@ -1,6 +1,6 @@
 # One-command operations. `make setup && make up` gives a running two-tier platform.
 PY ?= python3
-.PHONY: console-check setup up down status doctor test drill tls-check board backup tenant
+.PHONY: live-check console-check setup up down status doctor test drill tls-check board backup tenant
 setup:          ## install deps, generate .env secrets, run preflight
 	$(PY) -m pip install -r requirements.txt
 	$(PY) tools/ctl.py init
@@ -17,6 +17,9 @@ test:
 	$(PY) -m pytest -q
 drill:          ## full scripted drill against a throw-away stack
 	$(PY) tools/demo.py drill
+live-check:     ## realtime proof (ticks, fault -> banner/toast) in a real browser; needs: SOURCES=calm make up
+	$(PY) tools/livecheck.py --user $(USER_NAME) --password $(USER_PASS)
+
 console-check:  ## headless browser check of the Console; needs a running stack: make up
 	$(PY) tools/consolecheck.py --user $(USER_NAME) --password $(USER_PASS)
 tls-check:

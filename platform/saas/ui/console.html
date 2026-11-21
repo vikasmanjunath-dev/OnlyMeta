@@ -101,6 +101,7 @@ svg.hl .tn:not(.on){opacity:.3}svg.hl .edge:not(.on){opacity:.1}.tn{transition:o
 .wrap.enter .ln{stroke-dasharray:1;stroke-dashoffset:1;animation:dw 1.1s .1s ease forwards}@keyframes dw{to{stroke-dashoffset:0}}
 .wrap.enter .ring circle:nth-child(2){animation:rg 1s cubic-bezier(.2,.7,.2,1) both}@keyframes rg{from{stroke-dashoffset:170}}
 @media(prefers-reduced-motion:reduce){.edge.on{animation:none}}
+.fl{animation:fl .9s ease-out}@keyframes fl{from{opacity:.35}}
 </style></head><body>
 <div id="aura" aria-hidden="true"></div>
 <div id="login" class="on"><form class="lbox" id="lf"><h1>CICADA Console</h1><div class="mu">Sign in to your tenant</div><input id="lu" placeholder="Username" autocomplete="username" aria-label="Username"><input id="lp" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password"><button class="btn pri" style="width:100%" id="lgo">Sign in</button><div id="lerr" class="sm" style="color:var(--bad);margin-top:10px;min-height:18px" role="alert"></div></form></div>
@@ -172,7 +173,8 @@ function chrome(){const o=S.fleet.overall,n=openInc().length;const ov=$("ov");ov
 function connect(){ES&&ES.close();ES=new EventSource("/api/stream?token="+encodeURIComponent(T));let deb=0;
  const lv=(on,t)=>{$("live").classList.toggle("on",on);$("live").lastChild.textContent=t};
  ES.onopen=()=>lv(true,"live");ES.onerror=()=>lv(false,"reconnecting");
- const bump=()=>{clearTimeout(deb);deb=setTimeout(()=>refresh(),700)};
+ let w0=0;const bump=()=>{if(!w0)w0=Date.now();clearTimeout(deb);deb=setTimeout(()=>{w0=0;refresh()},Date.now()-w0>1500?0:300)};
+ ES.addEventListener("sample",e=>{try{livePatch(JSON.parse(e.data))}catch(x){}});
  ES.addEventListener("state",e=>{const d=JSON.parse(e.data);note("state",d);if(d.new=="POOR"||d.new=="FAIR"||d.old=="POOR")toast(`${lab(d.node)} is now ${LBL[d.new]||d.new}`,d.new,()=>go("fleet"));bump()});
  ES.addEventListener("incident",e=>{const d=JSON.parse(e.data);note("incident",d);if(d.status=="open"&&d.title)toast(`Incident: ${d.title}`,d.severity||"warn",()=>go("incidents/"+d.id));bump()});
  for(const k of["anomaly","collector","insight","remediation"])ES.addEventListener(k,e=>{note(k,JSON.parse(e.data));bump()});
@@ -191,6 +193,26 @@ function render(){const [r,arg]=ROUTE.split("/");const v=$("view");const fn=VIEW
  v.replaceChildren(fn(arg));$("main").scrollTop=sc}
 /* ---------- views ---------- */
 const VIEWS={};
+/* ---------- realtime layer ---------- */
+const HB={},tk=s=>h("span",{class:"tk","data-s":s,"data-t":Date.now()},ago(s));
+const SCOL=st=>({EXCELLENT:"var(--ok)",GOOD:"var(--ok)",FAIR:"var(--warn)",POOR:"var(--bad)"})[st]||"var(--mu)";
+const spark=(pts,c)=>{if(pts.length<2)return h("div",{class:"sm mu"},"collecting…");const W=260,H=44,mx=Math.max(100,...pts.map(p=>p.v)),X=i=>i/(pts.length-1)*W,Y=v=>H-2-v/mx*(H-4),n=pts.length,
+  d=pts.map((p,i)=>X(i).toFixed(1)+","+Y(p.v).toFixed(1)).join(" "),gid="sg"+Math.random().toString(36).slice(2,8),ns="http://www.w3.org/2000/svg",mk=(t,a)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);return e},
+  s=mk("svg",{viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:"none","aria-hidden":"true"}),df=mk("defs",{}),lg=mk("linearGradient",{id:gid,x1:0,y1:0,x2:0,y2:1}),s1=mk("stop",{offset:0,style:"stop-color:"+c+";stop-opacity:.16"}),s2=mk("stop",{offset:1,style:"stop-color:"+c+";stop-opacity:0"});
+  lg.append(s1,s2);df.append(lg);const xh=mk("line",{class:"xh",x1:0,x2:0,y1:0,y2:H});
+  s.append(df,mk("polygon",{points:`0,${H} ${d} ${W},${H}`,fill:`url(#${gid})`}),mk("polyline",{class:"ln",points:d,pathLength:1,fill:"none",stroke:c,"stroke-width":2,"stroke-linejoin":"round"}),xh);
+  const dot=h("i",{class:"dotp"}),tip=h("div",{class:"tip"}),w=h("div",{class:"spk",style:"--c:"+c},s,dot,tip);
+  s.addEventListener("pointermove",e=>{const r=s.getBoundingClientRect(),f=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),i=Math.round(f*(n-1)),p=pts[i],x=X(i)/W;xh.setAttribute("x1",X(i));xh.setAttribute("x2",X(i));dot.style.left=x*100+"%";dot.style.top=Y(p.v)+"px";tip.style.left=Math.min(82,Math.max(18,x*100))+"%";
+   const tm=typeof p.t=="number"?p.t*1000:Date.parse(p.t);tip.textContent=p.v.toFixed(1)+"%"+(isNaN(tm)?"":" · "+new Date(tm).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"}))});return w};
+function livePatch(d){if(d.is_replay)return;const id=d.node,m=d.metrics||{};LASTU=Date.now();
+ const n=S.fleet&&S.fleet.nodes.find(x=>x.node==id);if(n){n.metrics=Object.assign({},n.metrics,m);n.stale=false}
+ const H=HB[id]||(HB[id]=[]);if(m.cpu!=null){H.push({v:+m.cpu,t:d.event_time});if(H.length>120)H.shift()}
+ const card=document.querySelector(`.node[data-node="${CSS.escape(id)}"]`);if(!card)return;
+ for(const el of card.querySelectorAll("[data-k]")){const v=m[el.dataset.k];if(v==null)continue;const b=el.querySelector("b"),t=(+v).toFixed(v>=100?0:1)+el.dataset.u;
+  if(b.textContent!=t){b.textContent=t;b.classList.remove("fl");void b.offsetWidth;b.classList.add("fl")}
+  const i=el.querySelector(".meter i");if(i){i.style.width=Math.min(100,v)+"%";i.parentNode.style.setProperty("--c","var(--"+(v>=90?"bad":v>=70?"warn":"ok")+")")}}
+ const sp=card.querySelector("[id^=sp-]");if(sp&&H.length>1&&!sp.querySelector(".spk:hover"))sp.replaceChildren(spark(H,SCOL(n&&!n.stale?n.state:"")))}
+
 const RM=matchMedia("(prefers-reduced-motion:reduce)").matches,FINE=matchMedia("(pointer:fine)").matches;
 const kpi=(t,v,s,c,to)=>{const big=h("div",{class:"big",style:c?"color:var(--"+c+")":""},v),m=/^(\d+)(%?)$/.exec(String(v));
  if(m&&!RM){const end=+m[1],from=KV[t]!=null?KV[t]:0;KV[t]=end;if(from!=end){const t0=performance.now();big.textContent=from+m[2];const step=now=>{const k=Math.min(1,(now-t0)/700),e=1-Math.pow(1-k,3);big.textContent=Math.round(from+(end-from)*e)+m[2];if(k<1&&(big.isConnected||now-t0<80))requestAnimationFrame(step)};requestAnimationFrame(step)}}
@@ -200,9 +222,9 @@ const nodeState=id=>{const n=S.fleet.nodes.find(x=>x.node==id);return n?(n.stale
 function attention(){const L=[];
  for(const r of pending())L.push(h("div",{class:"att POOR",style:"--c:var(--warn)"},h("div",{class:"sp"},h("b",{},`Approve: ${r.action.replace(/_/g," ")} on ${lab(r.node)}`),h("div",{class:"sm mu"},`risk ${r.risk} · ${Math.round(r.confidence*100)}% confidence · REM-${r.id}`)),
   isAdmin()?[h("button",{class:"btn sm pri",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/approve`,"POST",{}),"Approved")},"Approve"),h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/reject`,"POST",{}),"Rejected")},"Reject")]:null,h("a",{href:"#/incidents/"+r.incident_id},"Details")));
- for(const i of openInc().filter(i=>!i.ack_by))L.push(h("div",{class:"att "+i.severity},h("div",{class:"sp"},h("b",{},i.title),h("div",{class:"sm mu"},`${i.ref} · ${i.severity} · open ${ago(i.duration_s)} · not acknowledged`)),
+ for(const i of openInc().filter(i=>!i.ack_by))L.push(h("div",{class:"att "+i.severity},h("div",{class:"sp"},h("b",{},i.title),h("div",{class:"sm mu"},`${i.ref} · ${i.severity} · open `,tk(i.age_s??i.duration_s)," · not acknowledged")),
   isAdmin()?h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api(`/api/incidents/${i.id}/ack`,"PUT"),"Acknowledged")},"Acknowledge"):null,h("a",{href:"#/incidents/"+i.id},"Open")));
- for(const c of S.cols.filter(c=>c.offline))L.push(h("div",{class:"att POOR"},h("div",{class:"sp"},h("b",{},`Collector ${c.collector_id} is offline`),h("div",{class:"sm mu"},`silent for ${ago(c.silent_s)} - data on its nodes is stale`))));
+ for(const c of S.cols.filter(c=>c.offline))L.push(h("div",{class:"att POOR"},h("div",{class:"sp"},h("b",{},`Collector ${c.collector_id} is offline`),h("div",{class:"sm mu"},"silent for ",tk(c.silent_s)," - data on its nodes is stale"))));
  return L.length?L:[h("div",{class:"sm mu"},"✓ Nothing needs you right now.")]}
 function topoSvg(){const T_=S.topo,ids=Object.keys(T_);if(!ids.length)return empty("No topology yet","Nodes appear once the collector reports.");
  const lvl={};const lv=id=>lvl[id]!=null?lvl[id]:(lvl[id]=-1,lvl[id]=Math.max(-1,...(T_[id].depends_on||[]).map(d=>T_[d]?lv(d):-1))+1);ids.forEach(lv);
@@ -233,11 +255,11 @@ VIEWS.incidents=arg=>{if(arg)return incDetail(+arg);
  const L=S.inc.filter(i=>incF=="all"||(incF=="open")==(i.status=="open")&&i.status!="merged");
  return h("div",{},h("h1",{class:"pg"},"Incidents"),h("div",{class:"sub"},"Related alerts are grouped into one incident with a named root cause."),
   h("div",{class:"tabs",role:"tablist"},...["open","resolved","all"].map(k=>h("button",{class:incF==k?"on":"",role:"tab",onclick:()=>{incF=k;render()}},k[0].toUpperCase()+k.slice(1)))),
-  h("div",{class:"card"},...(L.length?L.map(i=>h("div",{class:"row link",tabindex:0,onclick:()=>go("incidents/"+i.id),onkeydown:e=>e.key=="Enter"&&go("incidents/"+i.id)},pill(i.severity),h("div",{class:"sp"},h("b",{},i.title),h("div",{class:"sm mu"},`${i.ref} · ${i.kind} · root cause ${i.root_label} · ${Math.round(i.confidence*100)}% confidence`)),h("span",{class:"sm mu"},i.status=="open"?"open "+ago(i.duration_s):"took "+ago(i.duration_s)),pill(i.status=="open"?"warn":"ok",i.status))):[empty(incF=="open"?"All clear":"Nothing here","No incidents in this view.")])))};
+  h("div",{class:"card"},...(L.length?L.map(i=>h("div",{class:"row link",tabindex:0,onclick:()=>go("incidents/"+i.id),onkeydown:e=>e.key=="Enter"&&go("incidents/"+i.id)},pill(i.severity),h("div",{class:"sp"},h("b",{},i.title),h("div",{class:"sm mu"},`${i.ref} · ${i.kind} · root cause ${i.root_label} · ${Math.round(i.confidence*100)}% confidence`)),h("span",{class:"sm mu"},i.status=="open"?"open "+ago(i.age_s??i.duration_s):"took "+ago(i.duration_s)),pill(i.status=="open"?"warn":"ok",i.status))):[empty(incF=="open"?"All clear":"Nothing here","No incidents in this view.")])))};
 function incDetail(id){const box=h("div",{});const draw=v=>{const i=v;const rems=i.remediations||[];box.replaceChildren(
   h("a",{href:"#/incidents",class:"sm"},"← All incidents"),
   h("div",{style:"display:flex;gap:12px;align-items:center;margin:10px 0 4px;flex-wrap:wrap"},h("h1",{class:"pg",style:"margin:0"},i.title),pill(i.severity),pill(i.status=="open"?"warn":"ok",i.status)),
-  h("div",{class:"sub"},`${i.ref} · ${i.kind} · opened ${full(i.first_ts)} · ${i.status=="open"?"open for "+ago(i.duration_s):"resolved after "+ago(i.duration_s)}${i.ack_by?" · acknowledged by "+i.ack_by:""}`),
+  h("div",{class:"sub"},`${i.ref} · ${i.kind} · opened ${full(i.first_ts)} · ${i.status=="open"?"open for "+ago(i.age_s??i.duration_s):"resolved after "+ago(i.duration_s)}${i.ack_by?" · acknowledged by "+i.ack_by:""}`),
   h("div",{class:"inl",style:"margin-bottom:16px;justify-content:flex-start"},
    isAdmin()&&i.status=="open"&&!i.ack_by?h("button",{class:"btn pri",onclick:e=>act(e.target,()=>api(`/api/incidents/${id}/ack`,"PUT"),"Acknowledged")},"Acknowledge"):null,
    isAdmin()?h("button",{class:"btn",onclick:e=>act(e.target,async()=>{const r=await api("/api/shares","POST",{kind:"incident",incident:id,label:i.ref,ttl_h:168});const u=location.origin+r.path;await copy(u);toast("Read-only link copied (valid 7 days)","ok")})},"Share read-only link"):null,
@@ -259,20 +281,12 @@ function remCard(r){const p=r.policy||{},v=r.verdict,at=v&&v.attribution;const s
    r.status=="approved"?h("button",{class:"btn sm",onclick:e=>act(e.target,()=>api(`/api/remediation/${r.id}/cancel`,"POST",{}),"Cancelled")},"Cancel"):null):null)}
 /* fleet */
 VIEWS.fleet=()=>{const box=h("div",{},h("h1",{class:"pg"},"Fleet"),h("div",{class:"sub"},"Every monitored node, with the last 15 minutes of CPU."));const g=h("div",{class:"grid g3"});box.append(g);
- const spark=(pts,c)=>{if(pts.length<2)return h("div",{class:"sm mu"},"collecting…");const W=260,H=44,mx=Math.max(100,...pts.map(p=>p.v)),X=i=>i/(pts.length-1)*W,Y=v=>H-2-v/mx*(H-4),n=pts.length,
-  d=pts.map((p,i)=>X(i).toFixed(1)+","+Y(p.v).toFixed(1)).join(" "),gid="sg"+Math.random().toString(36).slice(2,8),ns="http://www.w3.org/2000/svg",mk=(t,a)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);return e},
-  s=mk("svg",{viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:"none","aria-hidden":"true"}),df=mk("defs",{}),lg=mk("linearGradient",{id:gid,x1:0,y1:0,x2:0,y2:1}),s1=mk("stop",{offset:0,style:"stop-color:"+c+";stop-opacity:.16"}),s2=mk("stop",{offset:1,style:"stop-color:"+c+";stop-opacity:0"});
-  lg.append(s1,s2);df.append(lg);const xh=mk("line",{class:"xh",x1:0,x2:0,y1:0,y2:H});
-  s.append(df,mk("polygon",{points:`0,${H} ${d} ${W},${H}`,fill:`url(#${gid})`}),mk("polyline",{class:"ln",points:d,pathLength:1,fill:"none",stroke:c,"stroke-width":2,"stroke-linejoin":"round"}),xh);
-  const dot=h("i",{class:"dotp"}),tip=h("div",{class:"tip"}),w=h("div",{class:"spk",style:"--c:"+c},s,dot,tip);
-  s.addEventListener("pointermove",e=>{const r=s.getBoundingClientRect(),f=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),i=Math.round(f*(n-1)),p=pts[i],x=X(i)/W;xh.setAttribute("x1",X(i));xh.setAttribute("x2",X(i));dot.style.left=x*100+"%";dot.style.top=Y(p.v)+"px";tip.style.left=Math.min(82,Math.max(18,x*100))+"%";
-   const tm=typeof p.t=="number"?p.t*1000:Date.parse(p.t);tip.textContent=p.v.toFixed(1)+"%"+(isNaN(tm)?"":" · "+new Date(tm).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"}))});return w};
  const nodes=[...S.fleet.nodes].sort((a,b)=>lab(a.node).localeCompare(lab(b.node)));
  if(!nodes.length)g.replaceWith(empty("No nodes yet","Connect a collector to start."));
- for(const n of nodes){const st=n.stale?"stale":n.state,m=n.metrics||{},card=h("div",{class:"card node tilt"},h("div",{class:"row",style:"padding-top:0"},h("b",{class:"sp"},lab(n.node)),pill(n.stale?"low":n.state,n.stale?"no recent data":(LBL[n.state]||n.state).toLowerCase())),h("div",{class:"sp"}),
-   h("div",{class:"grid",style:"grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0"},...[["CPU",m.cpu,"%",1],["Memory",m.mem,"%",1],["Disk",m.disk,"%",1],["Latency",m.latency_ms," ms"],["Loss",m.packet_loss,"%"],["Net",m.bandwidth_mbps," Mb/s"]].map(([k,v,u,mt])=>h("div",{},h("div",{class:"sm mu"},k),h("b",{},v!=null?(+v).toFixed(v>=100?0:1)+u:"-"),mt?h("div",{class:"meter",style:"margin-top:6px;--c:var(--"+(v>=90?"bad":v>=70?"warn":"ok")+")"},h("i",{style:"width:"+Math.min(100,v||0)+"%"})):null))),
-   h("div",{class:"sp",id:"sp-"+n.node},h("div",{class:"skel",style:"height:44px"})),h("div",{class:"sm mu",style:"margin-top:6px"},n.reasons.join("; ")+" · in this state "+ago(n.since_s)));g.append(card);
-  api(`/api/nodes/${n.node}/history?minutes=15&limit=120`).then(hs=>{const e=document.getElementById("sp-"+n.node);e&&e.replaceChildren(spark(hs.filter(x=>x.cpu!=null).map(x=>({v:+x.cpu,t:x.event_time})),({EXCELLENT:"var(--ok)",GOOD:"var(--ok)",FAIR:"var(--warn)",POOR:"var(--bad)"})[st]||"var(--mu)"))}).catch(()=>{})}
+ for(const n of nodes){const st=n.stale?"stale":n.state,m=n.metrics||{},card=h("div",{class:"card node tilt","data-node":n.node},h("div",{class:"row",style:"padding-top:0"},h("b",{class:"sp"},lab(n.node)),pill(n.stale?"low":n.state,n.stale?"no recent data":(LBL[n.state]||n.state).toLowerCase())),h("div",{class:"sp"}),
+   h("div",{class:"grid",style:"grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0"},...[["CPU",m.cpu,"%",1,"cpu"],["Memory",m.mem,"%",1,"mem"],["Disk",m.disk,"%",1,"disk"],["Latency",m.latency_ms," ms",0,"latency_ms"],["Loss",m.packet_loss,"%",0,"packet_loss"],["Net",m.bandwidth_mbps," Mb/s",0,"bandwidth_mbps"]].map(([k,v,u,mt,key])=>h("div",{"data-k":key,"data-u":u},h("div",{class:"sm mu"},k),h("b",{},v!=null?(+v).toFixed(v>=100?0:1)+u:"-"),mt?h("div",{class:"meter",style:"margin-top:6px;--c:var(--"+(v>=90?"bad":v>=70?"warn":"ok")+")"},h("i",{style:"width:"+Math.min(100,v||0)+"%"})):null))),
+   h("div",{class:"sp",id:"sp-"+n.node},h("div",{class:"skel",style:"height:44px"})),h("div",{class:"sm mu",style:"margin-top:6px"},n.reasons.join("; ")+" · in this state ",tk(n.since_s)));g.append(card);
+  api(`/api/nodes/${n.node}/history?minutes=15&limit=120`).then(hs=>{const e=document.getElementById("sp-"+n.node);e&&e.replaceChildren(spark(HB[n.node]=hs.filter(x=>x.cpu!=null).map(x=>({v:+x.cpu,t:x.event_time})),({EXCELLENT:"var(--ok)",GOOD:"var(--ok)",FAIR:"var(--warn)",POOR:"var(--bad)"})[st]||"var(--mu)"))}).catch(()=>{})}
  const fc=(S.sum.forecasts||[]);if(fc.length)box.append(h("div",{class:"card"},h("h2",{},"Forecasts"),...fc.map(f=>h("div",{class:"row"},h("span",{class:"sp"},`${f.label}: ${f.metric||""}`),h("span",{class:"mu"},f.text||`reaches limit in ${ago(f.eta_s||0)}`)))));return box};
 /* ask */
 const CHAT=[];let askBox;
@@ -363,6 +377,6 @@ setInterval(()=>{if(T&&ME&&!document.hidden)refresh()},20000);document.addEventL
 /* ---------- P15: interaction layer ---------- */
 {let raf=0,pe=null;
  document.addEventListener("pointermove",e=>{pe=e;if(raf)return;raf=requestAnimationFrame(()=>{raf=0;const el=pe.target.closest&&pe.target.closest(".card,.banner");if(!el)return;const r=el.getBoundingClientRect(),x=pe.clientX-r.left,y=pe.clientY-r.top;el.style.setProperty("--mx",x+"px");el.style.setProperty("--my",y+"px");})},{passive:true});
- setInterval(()=>{const u=$("upd");if(u)u.textContent=LASTU?(Date.now()-LASTU<3000?"updated just now":"updated "+ago((Date.now()-LASTU)/1000)+" ago"):""},1000)}
+ setInterval(()=>{document.querySelectorAll(".tk").forEach(e=>{e.textContent=ago(+e.dataset.s+(Date.now()-e.dataset.t)/1000)});const u=$("upd");if(u)u.textContent=LASTU?(Date.now()-LASTU<3000?"updated just now":"updated "+ago((Date.now()-LASTU)/1000)+" ago"):""},1000)}
 boot();
 </script></body></html>

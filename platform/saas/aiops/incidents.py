@@ -325,7 +325,7 @@ class IncidentManager:
         dur = (r["resolved_ts"] or r["last_ts"]) - r["first_ts"]
         return {"id": r["id"], "ref": f"INC-{r['id']}", "kind": r["kind"], "status": r["status"], "severity": r["severity"], "title": r["title"], "summary": r["summary"],
                 "root_node": r["root_node"], "root_label": r["explanation"].get("root_label"), "confidence": r["confidence"], "members": members,
-                "explanation": r["explanation"], "first_ts": r["first_ts"], "last_ts": r["last_ts"], "resolved_ts": r["resolved_ts"], "duration_s": round(dur, 1),
+                "explanation": r["explanation"], "first_ts": r["first_ts"], "last_ts": r["last_ts"], "resolved_ts": r["resolved_ts"], "duration_s": round(dur, 1), "age_s": round((r["resolved_ts"] or time.time()) - r["first_ts"], 1),
                 "detected_ts": r["detected_ts"], "ack_by": r["ack_by"], "ack_ts": r["ack_ts"], "peak_state": r["peak_state"]}
 
     def ack(self, tenant: str, iid: int, who: str, now: float) -> bool:

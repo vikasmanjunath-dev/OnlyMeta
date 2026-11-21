@@ -173,3 +173,17 @@ def test_incident_link_is_pinned_to_its_incident(env):
     iid = incident(c, ha)
     s = mkshare(c, ha, kind="incident", incident=iid)
     assert c.get(s["path"] + "/data").json()["incident"]["ref"] == f"INC-{iid}"
+
+
+# ---------------------------------------------------------------- realtime
+def test_open_incident_exposes_a_live_age_not_a_frozen_duration(env):
+    c, tok, h, *_ = env if len(env) > 2 else (*env, None)
+    iid = incident(c, h)
+    v = c.get(f"/api/incidents/{iid}", headers=h).json()
+    assert v["status"] == "open" and "age_s" in v and v["age_s"] >= v["duration_s"] >= 0
+
+
+def test_console_wires_live_samples_and_ticking_timers(env):
+    c, *_ = env
+    t = c.get("/console").text
+    assert 'addEventListener("sample"' in t and "function livePatch" in t and 'class:"tk"' in t

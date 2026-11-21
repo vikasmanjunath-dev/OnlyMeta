@@ -89,5 +89,5 @@ class Shares:
         ex = v.get("explanation") or {}
         return {**base, "incident": {"ref": v["ref"], "title": v["title"], "summary": v["summary"], "kind": v["kind"], "severity": v["severity"], "status": v["status"],
                                      "root_cause": v["root_label"], "confidence": v["confidence"], "started_ts": v["first_ts"], "resolved_ts": v["resolved_ts"],
-                                     "duration_s": v["duration_s"], "explanation": ex.get("text", ""), "affected": [m["label"] for m in v["members"]],
+                                     "duration_s": v.get("age_s", v["duration_s"]), "explanation": ex.get("text", ""), "affected": [m["label"] for m in v["members"]],
                                      "actions": rems, "timeline": tl}}
