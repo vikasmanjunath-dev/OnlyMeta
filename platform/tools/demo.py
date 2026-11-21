@@ -125,9 +125,12 @@ class Stack:
         return r.returncode == 0, [(r.stdout + r.stderr).strip()[-160:]]
 
 
-def up(tls=False):
+def up(tls=False, fresh=False):
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))    # `kill` stops the children too
     data = ROOT / "data"
+    if fresh:                                                                  # clean slate for a demo: drop old databases and logs (keeps the KEK)
+        for f in [*data.glob("*.db"), *data.glob("*.db-*"), *data.glob("*.log")]:
+            f.unlink(missing_ok=True)
     st = Stack(data, 8000, {"alpha": 8001, "beta": 8002}, source=os.getenv("DEMO_STREAM", "calm"), tls=tls)    # calm = healthy synthetic feed, faults only when injected
     try:
         st.start_saas()
@@ -137,6 +140,7 @@ def up(tls=False):
         if tls:
             print(f" TLS is ON. The SaaS certificate is signed by {st.cert['ca']}: collectors trust only that CA.\n Browser: import that CA once, or use mkcert (set TLS_CA, TLS_CERT, TLS_KEY), or accept the warning for 127.0.0.1.")
         print(f"""
+ Console           {sb}/console      alpha-admin / alpha-demo-pass   (customer view, live)
  Proof Board       {sb}/demo
  SaaS tracker      {sb}/tracker      alpha-admin / alpha-demo-pass     beta-admin / beta-demo-pass
  Alpha collector   http://127.0.0.1:8001              (tenant-alpha, region IN)
@@ -508,6 +512,7 @@ if __name__ == "__main__":
     ap.add_argument("cmd", choices=["up", "drill", "preflight", "boardcheck", "tlscheck"])
     ap.add_argument("--tls", action="store_true", help="up / boardcheck: serve the SaaS over https (demo CA); collectors verify it")
     ap.add_argument("--core", action="store_true", help="boardcheck: only the four core proofs (1-4)")
+    ap.add_argument("--fresh", action="store_true", help="up: wipe old databases and logs first (clean demo)")
     ap.add_argument("--fix", action="store_true", help="preflight: prime the detectors when they are cold")
     a = ap.parse_args()
-    sys.exit({"drill": drill, "up": lambda: up(a.tls), "boardcheck": lambda: boardcheck(a.tls, a.core), "tlscheck": tlscheck}.get(a.cmd, lambda: preflight(a.fix, saas=os.getenv("SAAS_BASE", "http://127.0.0.1:8000")))())
+    sys.exit({"drill": drill, "up": lambda: up(a.tls, a.fresh), "boardcheck": lambda: boardcheck(a.tls, a.core), "tlscheck": tlscheck}.get(a.cmd, lambda: preflight(a.fix, saas=os.getenv("SAAS_BASE", "http://127.0.0.1:8000")))())

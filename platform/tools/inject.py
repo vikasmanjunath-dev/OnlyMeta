@@ -1,6 +1,7 @@
 """Scenario injector: one command per judge scenario. Targets a running collector (default :8001).
   python3 tools/inject.py secret | outage --seconds 30 | bruteforce --n 15 | latency --ms 400 |
                           cpu --pct 95 | incident | dup --n 3 | ooo | servicedown | config --burst 8 --saas http://127.0.0.1:8000
+python3 tools/inject.py fault --node db-01 | clear | leak   (calm source: sustained fault, clear it, fake-secret proof)
 Events are in the stream's raw format with timestamps = now (fake credentials only)."""
 import argparse
 import json
@@ -31,7 +32,7 @@ def ticks(base, n, make, every=5):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("scenario", choices="secret outage bruteforce latency cpu incident dup ooo servicedown config drift".split())
+    ap.add_argument("scenario", choices="secret outage bruteforce latency cpu incident dup ooo servicedown config drift fault clear leak".split())
     ap.add_argument("--base", default="http://127.0.0.1:8001")
     ap.add_argument("--seconds", type=float, default=30)
     ap.add_argument("--n", type=int, default=15)
@@ -39,6 +40,8 @@ def main():
     ap.add_argument("--pct", type=float, default=95)
     ap.add_argument("--ticks", type=int, default=3)
     ap.add_argument("--burst", type=int, default=8)
+    ap.add_argument("--node", default="db-01")
+    ap.add_argument("--heal", type=int, default=0, help="fault: self-heal after N ticks (0 = until cleared or acted on)")
     ap.add_argument("--saas", default="http://127.0.0.1:8000")
     ap.add_argument("--tenant", default="tenant-alpha")
     a = ap.parse_args()
@@ -46,6 +49,13 @@ def main():
     if a.scenario == "secret":
         print(post(b, "/api/inject", [ev("app-01", raw_log="deploy password=Hunter2 token=ghp_FAKEFAKEFAKE1234",
                                          api_key="sk-proj-9988221100")]))
+    elif a.scenario == "fault":                                       # needs SOURCES=calm; sustained CPU saturation on --node
+        print(post(b, f"/api/chaos/scenario/fault?node={a.node}&heal={a.heal}"))
+    elif a.scenario == "clear":
+        print(post(b, "/api/chaos/scenario/clearfault"))
+    elif a.scenario == "leak":                                        # fake secrets through the real pipeline; prints what left the boundary
+        r = post(b, "/api/chaos/scenario/secret")
+        print({k: r.get(k) for k in ("payloads_emitted", "secrets_seen_locally", "blocked_at_boundary")}, "secrets in outbound:", sum(e.get("secrets_in_outbound", 0) for e in r.get("evidence", [])))
     elif a.scenario == "outage":
         print(post(b, f"/api/chaos/outage?seconds={a.seconds}"))
     elif a.scenario == "bruteforce":

@@ -182,5 +182,8 @@ Measured here (in-process, no network, one laptop-class core): 10,000 payloads a
 ## Operate it (P11)
 `make setup && make up` - generates secrets, starts SaaS + a collector per tenant. `ctl onboard/offboard/backup/restore/doctor`; see `docs/operations.md`.
 
+## Present it (P17)
+`docs/demo_runbook.md`: end-to-end demo script for every feature (timings measured), how to explain the build, numbers to quote, likely questions, and fixes. Clean start: `python3 tools/demo.py up --fresh`; live shortcuts: `python3 tools/inject.py fault|clear|leak`.
+
 ## Console (P12)
 Open `/console` (root redirects there). Customer-facing UI with live updates, incident actions, Ask, setup wizard and read-only share links; `/tracker` stays the engineering view and `/demo` the proof board. See `docs/operations.md`.
