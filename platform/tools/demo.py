@@ -70,7 +70,7 @@ class Stack:
     def _spawn(self, name, args, env):
         log = open(self.data / f"{name}.log", "ab")
         self.logs[name] = log
-        self.procs[name] = subprocess.Popen([PY, *args], cwd=ROOT, env={**os.environ, **env}, stdout=log, stderr=subprocess.STDOUT)
+        self.procs[name] = subprocess.Popen([PY, *args], cwd=ROOT, env={**os.environ, "CICADA_ENV": "/nonexistent/demo.env", **env}, stdout=log, stderr=subprocess.STDOUT)
 
     def start_saas(self):
         tls = ["--certfile", self.cert["cert"], "--keyfile", self.cert["key"]] if self.tls else []
